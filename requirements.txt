@@ -1,0 +1,12 @@
+flask
+numpy==1.26.4
+pandas
+scikit-learn
+sentence-transformers==2.7.0
+faiss-cpu
+transformers==4.41.2
+accelerate==0.31.0
+sentencepiece
+torch==2.2.2
+pyngrok
+shap
