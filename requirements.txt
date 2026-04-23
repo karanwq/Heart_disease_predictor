@@ -1,12 +1,10 @@
 flask
-numpy==1.26.4
+numpy
 pandas
 scikit-learn
-sentence-transformers==2.7.0
+sentence-transformers
 faiss-cpu
-transformers==4.41.2
-accelerate==0.31.0
+transformers
+accelerate
 sentencepiece
-torch==2.2.2
-pyngrok
-shap
+torch
