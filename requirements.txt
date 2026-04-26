@@ -1,10 +1,4 @@
-flask
-numpy
-pandas
-scikit-learn
-sentence-transformers
-faiss-cpu
-transformers
-accelerate
-sentencepiece
-torch
+Flask==3.0.3
+numpy==1.26.4
+pandas==2.2.2
+scikit-learn==1.5.1
