@@ -77,7 +77,8 @@ HTML_TEMPLATE = """
     .mode { background: rgba(186,117,23,.1); color: #8a5a0f; border: 1px solid rgba(186,117,23,.25); }
     .error { background: rgba(226,75,74,.1); color: #a32d2d; border: 1px solid rgba(226,75,74,.25); }
     .note { max-width: 500px; margin: 2.5rem auto 0; text-align: center; color: rgba(46,45,43,.35); font-size: 12px; font-weight: 300; line-height: 1.7; }
-    #chat-toggle { position: fixed; right: 24px; bottom: 24px; z-index: 1001; min-width: 112px; height: 52px; padding: 0 18px; border: 0; border-radius: 999px; display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--red); color: #fff; font: 700 15px 'DM Sans', sans-serif; cursor: pointer; box-shadow: 0 12px 32px rgba(226,75,74,.38); }
+    #chat-toggle { position: fixed; right: 24px; bottom: 24px; z-index: 1001; width: 56px; height: 56px; border: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--red); color: #fff; cursor: pointer; box-shadow: 0 12px 32px rgba(226,75,74,.38); }
+    #chat-toggle svg { width: 24px; height: 24px; }
     #chat-toggle:hover { filter: brightness(.96); transform: translateY(-1px); }
     #chat { position: fixed; right: 24px; bottom: 92px; z-index: 1000; width: min(360px, calc(100% - 32px)); max-height: 520px; display: none; flex-direction: column; overflow: hidden; background: #fff; border: 1px solid rgba(46,45,43,.12); border-radius: 8px; box-shadow: 0 20px 60px rgba(46,45,43,.18); }
     #chat.open { display: flex; }
@@ -117,7 +118,6 @@ HTML_TEMPLATE = """
         </div>
         <button class="predict" type="submit">Run Prediction</button>
       </form>
-        {% if mode_message %}<div class="mode">{{ mode_message }}</div>{% endif %}
         {% if error %}<div class="error">{{ error }}</div>{% endif %}
 
       {% if prediction_text %}
@@ -141,7 +141,11 @@ HTML_TEMPLATE = """
     <p class="note">This tool provides a statistical estimate only and is not a substitute for professional medical diagnosis.</p>
   </main>
 
-  <button id="chat-toggle" type="button" aria-label="Open chat">Chat</button>
+  <button id="chat-toggle" type="button" aria-label="Open chat">
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
   <section id="chat" aria-label="Heart health assistant">
     <div class="chat-head">Heart Health Assistant</div>
     <div id="messages"><div class="msg bot">Hi! Ask about blood pressure, cholesterol, exercise, or heart-disease risk factors.</div></div>
