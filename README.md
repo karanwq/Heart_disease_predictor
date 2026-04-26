@@ -28,7 +28,8 @@ This project uses the **UCI Heart Disease dataset** (`heart.csv` from Kaggle) to
 ```
 heart-disease-predictor/
 │
-├── updated_health.py       # Main Colab notebook (exported as .py)
+├── health_with_ai_chatbot.ipynb # Main Colab notebook
+├── app.py                  # Render-ready Flask app based on the notebook
 ├── heart.csv               # Dataset (from Kaggle)
 ├── health.pkl              # Saved trained model
 ├── scaler.pkl              # Saved StandardScaler
@@ -113,7 +114,7 @@ The web app is built with **Flask** and features:
 
 1. **Upload files** to your Colab session:
    - `heart.csv`
-   - `updated_health.py` (or open the `.ipynb` directly)
+   - `health_with_ai_chatbot.ipynb`
 
 2. **Install dependencies:**
    ```bash
@@ -135,15 +136,26 @@ The web app is built with **Flask** and features:
 
 ---
 
+## Render Deployment
+
+Deploy `app.py`, not `updated_health.py`.
+
+- Build command: `pip install -r requirements.txt`
+- Start command: `gunicorn app:app`
+- Python version: `3.11.9`
+
+If `health.pkl` and `scaler.pkl` are present, the app loads them. If `heart.csv` is present, the app trains and saves those artifacts on startup. If none of those files are present, the app still deploys and uses fallback demo scoring.
+
+---
+
 ## 📦 Dependencies
 
 | Library        | Purpose                          |
 |----------------|----------------------------------|
 | `pandas`       | Data loading and manipulation    |
 | `scikit-learn` | ML model, scaler, train/test split |
-| `shap`         | Model explainability (SHAP values) |
 | `flask`        | Web framework                    |
-| `pyngrok`      | Expose local server publicly     |
+| `gunicorn`     | Production WSGI server for Render |
 | `pickle`       | Save and load model artifacts    |
 | `numpy`        | Numerical operations             |
 

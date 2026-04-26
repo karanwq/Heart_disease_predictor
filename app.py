@@ -1,9 +1,10 @@
 import os
 import pickle
+import re
 from pathlib import Path
 
 import pandas as pd
-from flask import Flask, render_template_string, request
+from flask import Flask, jsonify, render_template_string, request
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
@@ -15,19 +16,19 @@ SCALER_PATH = BASE_DIR / "scaler.pkl"
 DATA_PATH = BASE_DIR / "heart.csv"
 
 FEATURE_NAMES = [
-    "age",
-    "sex",
-    "cp",
-    "trestbps",
-    "chol",
-    "fbs",
-    "restecg",
-    "thalach",
-    "exang",
-    "oldpeak",
-    "slope",
-    "ca",
-    "thal",
+    "age", "sex", "cp", "trestbps", "chol", "fbs", "restecg",
+    "thalach", "exang", "oldpeak", "slope", "ca", "thal",
+]
+
+DOCUMENTS = [
+    "High blood pressure can occur due to stress, high salt intake, lack of exercise, or obesity.",
+    "Cholesterol buildup in arteries reduces blood flow and increases heart disease risk.",
+    "Smoking damages blood vessels and increases blood pressure.",
+    "Regular exercise helps lower blood pressure and improves heart health.",
+    "Obesity increases strain on the heart and raises blood pressure.",
+    "Excess salt intake causes water retention which increases blood pressure.",
+    "Diabetes damages blood vessels and contributes to heart disease.",
+    "Chest pain, exercise angina, and abnormal ECG findings can be warning signs that need medical review.",
 ]
 
 HTML_TEMPLATE = """
@@ -39,573 +40,293 @@ HTML_TEMPLATE = """
   <title>Heart AI Predictor</title>
   <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
   <style>
-    :root {
-      --red-400: #E24B4A;
-      --teal-400: #1D9E75;
-      --amber-400: #BA7517;
-    }
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'DM Sans', sans-serif;
-      background: #0c0a09;
-      color: #f5f0eb;
-      min-height: 100vh;
-      overflow-x: hidden;
-    }
-    body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background:
-        radial-gradient(ellipse 80% 60% at 20% 10%, rgba(162, 45, 45, 0.18) 0%, transparent 60%),
-        radial-gradient(ellipse 60% 50% at 80% 80%, rgba(15, 110, 86, 0.12) 0%, transparent 55%),
-        radial-gradient(ellipse 40% 40% at 60% 30%, rgba(186, 117, 23, 0.08) 0%, transparent 50%);
-      pointer-events: none;
-      z-index: 0;
-    }
-    .page-wrap {
-      position: relative;
-      z-index: 1;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 3rem 1.5rem 5rem;
-    }
-    .header {
-      text-align: center;
-      margin-bottom: 3rem;
-      animation: fadeDown 0.7s ease both;
-    }
-    .header-eyebrow {
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.25em;
-      text-transform: uppercase;
-      color: var(--red-400);
-      margin-bottom: 1rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-    }
-    .header-eyebrow::before,
-    .header-eyebrow::after {
-      content: '';
-      display: block;
-      width: 40px;
-      height: 1px;
-      background: var(--red-400);
-      opacity: 0.5;
-    }
-    .header h1 {
-      font-family: 'DM Serif Display', serif;
-      font-size: clamp(2.4rem, 5vw, 3.6rem);
-      font-weight: 400;
-      line-height: 1.1;
-      margin-bottom: 0.75rem;
-    }
-    .header h1 em { font-style: italic; color: var(--red-400); }
-    .header-sub {
-      font-size: 15px;
-      color: rgba(245, 240, 235, 0.45);
-      font-weight: 300;
-      max-width: 380px;
-      margin: 0 auto;
-      line-height: 1.6;
-    }
-    .heart-icon {
-      display: inline-block;
-      width: 32px;
-      height: 32px;
-      margin-bottom: 1.25rem;
-      animation: heartbeat 1.6s ease-in-out infinite;
-    }
-    .ecg-line {
-      width: 100%;
-      max-width: 340px;
-      margin: 0.75rem auto 0;
-      opacity: 0.18;
-    }
-    .card {
-      width: 100%;
-      max-width: 820px;
-      background: rgba(245, 240, 235, 0.04);
-      border: 0.5px solid rgba(245, 240, 235, 0.1);
-      border-radius: 24px;
-      overflow: hidden;
-      animation: fadeUp 0.8s 0.15s ease both;
-    }
-    .section-label {
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      color: rgba(245, 240, 235, 0.35);
-      padding: 1.5rem 2rem 0.75rem;
-      border-bottom: 0.5px solid rgba(245, 240, 235, 0.06);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .section-label .dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--red-400);
-      opacity: 0.7;
-    }
-    .form-body { padding: 1.5rem 2rem 2rem; }
-    .fields-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 12px;
-      margin-bottom: 1.75rem;
-    }
-    .field-wrap {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .field-label {
-      font-size: 11px;
-      font-weight: 500;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: rgba(245, 240, 235, 0.4);
-    }
-    .field-hint {
-      font-size: 10px;
-      color: rgba(245, 240, 235, 0.25);
-      font-weight: 300;
-    }
-    input {
-      width: 100%;
-      padding: 10px 14px;
-      border-radius: 10px;
-      border: 0.5px solid rgba(245, 240, 235, 0.12);
-      background: rgba(245, 240, 235, 0.05);
-      color: #f5f0eb;
-      font-family: 'DM Sans', sans-serif;
-      font-size: 14px;
-      outline: none;
-      transition: border-color 0.2s, background 0.2s;
-      -webkit-appearance: none;
-    }
-    input::placeholder { color: rgba(245, 240, 235, 0.2); }
-    input:focus {
-      border-color: rgba(226, 75, 74, 0.5);
-      background: rgba(245, 240, 235, 0.08);
-    }
-    .btn-predict {
-      width: 100%;
-      padding: 15px 28px;
-      border-radius: 12px;
-      border: none;
-      background: var(--red-400);
-      color: #fff;
-      font-family: 'DM Sans', sans-serif;
-      font-size: 14px;
-      font-weight: 600;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      cursor: pointer;
-    }
-    .divider {
-      height: 0.5px;
-      background: rgba(245, 240, 235, 0.07);
-      margin: 0 2rem;
-    }
-    .result-section { padding: 1.75rem 2rem 2rem; }
-    .result-headline {
-      font-family: 'DM Serif Display', serif;
-      font-size: 1.6rem;
-      font-weight: 400;
-      margin-bottom: 1.25rem;
-      line-height: 1.3;
-    }
-    .risk-meter-wrap { margin-bottom: 1.5rem; }
-    .risk-meta {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      margin-bottom: 10px;
-    }
-    .risk-meta-label {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: rgba(245, 240, 235, 0.35);
-      font-weight: 500;
-    }
-    .risk-percentage {
-      font-family: 'DM Serif Display', serif;
-      font-size: 2rem;
-      line-height: 1;
-    }
-    .risk-percentage span {
-      font-family: 'DM Sans', sans-serif;
-      font-size: 13px;
-      color: rgba(245, 240, 235, 0.4);
-      font-weight: 300;
-      margin-left: 3px;
-    }
-    .risk-track {
-      height: 8px;
-      background: rgba(245, 240, 235, 0.08);
-      border-radius: 100px;
-      overflow: hidden;
-    }
-    .risk-fill {
-      height: 100%;
-      width: 0;
-      border-radius: 100px;
-      background: linear-gradient(90deg, var(--teal-400) 0%, var(--amber-400) 55%, var(--red-400) 100%);
-      transition: width 1.2s cubic-bezier(0.4, 0, 0.2, 1);
-      position: relative;
-    }
-    .risk-fill::after {
-      content: '';
-      position: absolute;
-      right: 0;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
-      background: #fff;
-      box-shadow: 0 0 0 3px rgba(255,255,255,0.2);
-    }
-    .risk-scale {
-      display: flex;
-      justify-content: space-between;
-      margin-top: 6px;
-    }
-    .risk-scale-item {
-      font-size: 10px;
-      color: rgba(245, 240, 235, 0.25);
-      letter-spacing: 0.04em;
-    }
-    .status-chips {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .chip {
-      padding: 5px 14px;
-      border-radius: 100px;
-      font-size: 12px;
-      font-weight: 500;
-      letter-spacing: 0.04em;
-    }
-    .chip-low {
-      background: rgba(29, 158, 117, 0.15);
-      color: #5DCAA5;
-      border: 0.5px solid rgba(29, 158, 117, 0.3);
-    }
-    .chip-medium {
-      background: rgba(186, 117, 23, 0.15);
-      color: #FAC775;
-      border: 0.5px solid rgba(186, 117, 23, 0.3);
-    }
-    .chip-high {
-      background: rgba(226, 75, 74, 0.15);
-      color: #F09595;
-      border: 0.5px solid rgba(226, 75, 74, 0.3);
-    }
-    .error-message {
-      margin-top: 1rem;
-      padding: 12px 14px;
-      border-radius: 12px;
-      background: rgba(226, 75, 74, 0.12);
-      border: 0.5px solid rgba(226, 75, 74, 0.3);
-      color: #f5c2c1;
-      font-size: 14px;
-    }
-    .footer-note {
-      margin-top: 2.5rem;
-      text-align: center;
-      font-size: 12px;
-      color: rgba(245, 240, 235, 0.2);
-      line-height: 1.7;
-      max-width: 500px;
-    }
-    .footer-note strong {
-      color: rgba(245, 240, 235, 0.35);
-      font-weight: 500;
-    }
-    @keyframes fadeDown {
-      from { opacity: 0; transform: translateY(-18px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(22px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes heartbeat {
-      0%, 100% { transform: scale(1); }
-      14% { transform: scale(1.2); }
-      28% { transform: scale(1); }
-      42% { transform: scale(1.12); }
-      70% { transform: scale(1); }
-    }
-    @media (max-width: 580px) {
-      .form-body { padding: 1.25rem 1.25rem 1.5rem; }
-      .section-label { padding: 1.25rem 1.25rem 0.75rem; }
-      .divider { margin: 0 1.25rem; }
-      .result-section { padding: 1.5rem 1.25rem; }
-      .fields-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
-    }
-    @media (max-width: 400px) {
-      .fields-grid { grid-template-columns: 1fr; }
-    }
+    :root { --red: #e24b4a; --teal: #1d9e75; --amber: #ba7517; --ink: #2e2d2b; --paper: #f4f2ec; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; font-family: 'DM Sans', sans-serif; background: var(--paper); color: var(--ink); }
+    body::before { content: ""; position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 18% 8%, rgba(226,75,74,.08), transparent 55%), radial-gradient(ellipse at 88% 80%, rgba(29,158,117,.08), transparent 50%); }
+    .page { position: relative; width: min(920px, calc(100% - 32px)); margin: 0 auto; padding: 42px 0 84px; }
+    header { text-align: center; margin-bottom: 28px; }
+    .heart { width: 34px; height: 34px; animation: beat 1.7s ease-in-out infinite; }
+    .eyebrow { margin-top: 10px; color: var(--red); font-size: 11px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; }
+    h1 { margin: 10px 0 8px; font-family: 'DM Serif Display', serif; font-size: clamp(2.4rem, 7vw, 4rem); font-weight: 400; line-height: .95; }
+    h1 em { color: var(--red); }
+    .sub { margin: 0 auto; max-width: 520px; color: rgba(46,45,43,.62); line-height: 1.6; }
+    .panel { background: #fff; border: 1px solid rgba(46,45,43,.1); border-radius: 8px; box-shadow: 0 14px 45px rgba(46,45,43,.08); overflow: hidden; }
+    .label { padding: 18px 24px 10px; border-bottom: 1px solid rgba(46,45,43,.07); color: rgba(46,45,43,.48); font-size: 10px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; }
+    form { padding: 22px 24px 24px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+    label { display: block; margin-bottom: 6px; color: rgba(46,45,43,.55); font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+    label span { color: rgba(46,45,43,.35); font-weight: 500; text-transform: none; }
+    input { width: 100%; min-height: 42px; padding: 9px 12px; border: 1px solid rgba(46,45,43,.16); border-radius: 8px; background: #f8f7f3; color: var(--ink); font: inherit; }
+    input:focus { outline: none; border-color: rgba(226,75,74,.58); background: #fff; }
+    .predict { width: 100%; margin-top: 18px; min-height: 48px; border: 0; border-radius: 8px; background: var(--red); color: #fff; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; cursor: pointer; }
+    .result { padding: 22px 24px 26px; border-top: 1px solid rgba(46,45,43,.08); }
+    .headline { margin: 0 0 16px; font-family: 'DM Serif Display', serif; font-size: 1.7rem; }
+    .meta { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 8px; }
+    .score { font-family: 'DM Serif Display', serif; font-size: 2.1rem; }
+    .track { height: 9px; overflow: hidden; border-radius: 999px; background: rgba(46,45,43,.09); }
+    .fill { height: 100%; width: {{ risk if risk else 0 }}%; background: linear-gradient(90deg, var(--teal), var(--amber), var(--red)); }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .chip { padding: 6px 12px; border-radius: 999px; font-size: 12px; background: rgba(226,75,74,.1); color: #9b2d2d; }
+    .mode, .error { margin-top: 14px; padding: 11px 13px; border-radius: 8px; font-size: 13px; line-height: 1.45; }
+    .mode { background: rgba(186,117,23,.1); color: #7d520f; }
+    .error { background: rgba(226,75,74,.12); color: #9b2d2d; }
+    .note { max-width: 560px; margin: 22px auto 0; text-align: center; color: rgba(46,45,43,.48); font-size: 12px; line-height: 1.6; }
+    #chat-toggle { position: fixed; right: 24px; bottom: 24px; width: 56px; height: 56px; border: 0; border-radius: 50%; background: var(--red); color: #fff; font-size: 24px; cursor: pointer; box-shadow: 0 12px 32px rgba(226,75,74,.34); }
+    #chat { position: fixed; right: 24px; bottom: 92px; width: min(360px, calc(100% - 32px)); max-height: 520px; display: none; flex-direction: column; overflow: hidden; background: #fff; border: 1px solid rgba(46,45,43,.12); border-radius: 8px; box-shadow: 0 20px 60px rgba(46,45,43,.18); }
+    #chat.open { display: flex; }
+    .chat-head { padding: 14px 16px; background: var(--red); color: #fff; font-weight: 700; }
+    #messages { min-height: 220px; max-height: 360px; overflow-y: auto; padding: 14px; background: #f8f7f3; }
+    .msg { width: fit-content; max-width: 86%; margin: 0 0 10px; padding: 9px 12px; border-radius: 8px; font-size: 13px; line-height: 1.45; white-space: pre-line; }
+    .bot { background: #fff; border: 1px solid rgba(46,45,43,.1); }
+    .user { margin-left: auto; background: var(--red); color: #fff; }
+    .chat-row { display: flex; gap: 8px; padding: 10px; border-top: 1px solid rgba(46,45,43,.08); }
+    #chat-input { flex: 1; }
+    #send { width: 42px; border: 0; border-radius: 8px; background: var(--red); color: #fff; cursor: pointer; }
+    @keyframes beat { 0%, 100% { transform: scale(1); } 20% { transform: scale(1.18); } 34% { transform: scale(1); } }
   </style>
 </head>
 <body>
-  <div class="page-wrap">
-    <header class="header">
-      <svg class="heart-icon" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M16 28C16 28 3 20.5 3 11.5C3 7.36 6.13 4 10 4C12.35 4 14.43 5.21 16 7C17.57 5.21 19.65 4 22 4C25.87 4 29 7.36 29 11.5C29 20.5 16 28 16 28Z" fill="#E24B4A"/>
-      </svg>
-      <div class="header-eyebrow">AI Clinical Assessment</div>
+  <main class="page">
+    <header>
+      <svg class="heart" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 28S3 20.5 3 11.5C3 7.36 6.13 4 10 4c2.35 0 4.43 1.21 6 3 1.57-1.79 3.65-3 6-3 3.87 0 7 3.36 7 7.5C29 20.5 16 28 16 28Z" fill="#e24b4a"/></svg>
+      <div class="eyebrow">AI Clinical Assessment</div>
       <h1>Heart Risk<br><em>Predictor</em></h1>
-      <p class="header-sub">Enter patient clinical data below for an AI-powered cardiovascular risk assessment.</p>
-      <svg class="ecg-line" viewBox="0 0 340 28" xmlns="http://www.w3.org/2000/svg">
-        <polyline points="0,14 40,14 52,14 60,2 68,26 74,6 82,22 90,14 130,14 170,14 210,14 250,14 290,14 340,14" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
+      <p class="sub">Deployed Flask version of the health notebook with a prediction form and heart-health chatbot.</p>
     </header>
 
-    <div class="card">
-      <div class="section-label">
-        <span class="dot"></span>
-        Patient Clinical Parameters
-      </div>
-
+    <section class="panel">
+      <div class="label">Patient Clinical Parameters</div>
       <form action="/predict" method="POST">
-        <div class="form-body">
-          <div class="fields-grid">
-            <div class="field-wrap">
-              <label class="field-label" for="age">Age <span class="field-hint">years</span></label>
-              <input type="number" id="age" name="age" placeholder="e.g. 54" min="1" max="120" required>
-            </div>
-            <div class="field-wrap">
-              <label class="field-label" for="sex">Sex <span class="field-hint">0=F, 1=M</span></label>
-              <input type="number" id="sex" name="sex" placeholder="0 or 1" min="0" max="1" required>
-            </div>
-            <div class="field-wrap">
-              <label class="field-label" for="cp">Chest Pain <span class="field-hint">type 0-3</span></label>
-              <input type="number" id="cp" name="cp" placeholder="0-3" min="0" max="3" required>
-            </div>
-            <div class="field-wrap">
-              <label class="field-label" for="trestbps">Resting BP <span class="field-hint">mm Hg</span></label>
-              <input type="number" id="trestbps" name="trestbps" placeholder="e.g. 120" required>
-            </div>
-            <div class="field-wrap">
-              <label class="field-label" for="chol">Cholesterol <span class="field-hint">mg/dl</span></label>
-              <input type="number" id="chol" name="chol" placeholder="e.g. 220" required>
-            </div>
-            <div class="field-wrap">
-              <label class="field-label" for="fbs">Fasting Blood Sugar <span class="field-hint">&gt;120 mg/dl</span></label>
-              <input type="number" id="fbs" name="fbs" placeholder="0 or 1" min="0" max="1" required>
-            </div>
-            <div class="field-wrap">
-              <label class="field-label" for="restecg">Rest ECG <span class="field-hint">0-2</span></label>
-              <input type="number" id="restecg" name="restecg" placeholder="0-2" min="0" max="2" required>
-            </div>
-            <div class="field-wrap">
-              <label class="field-label" for="thalach">Max Heart Rate <span class="field-hint">bpm</span></label>
-              <input type="number" id="thalach" name="thalach" placeholder="e.g. 150" required>
-            </div>
-            <div class="field-wrap">
-              <label class="field-label" for="exang">Exercise Angina <span class="field-hint">0=No, 1=Yes</span></label>
-              <input type="number" id="exang" name="exang" placeholder="0 or 1" min="0" max="1" required>
-            </div>
-            <div class="field-wrap">
-              <label class="field-label" for="oldpeak">ST Depression <span class="field-hint">Oldpeak</span></label>
-              <input type="number" id="oldpeak" name="oldpeak" placeholder="e.g. 1.2" step="0.1" required>
-            </div>
-            <div class="field-wrap">
-              <label class="field-label" for="slope">Slope <span class="field-hint">0-2</span></label>
-              <input type="number" id="slope" name="slope" placeholder="0-2" min="0" max="2" required>
-            </div>
-            <div class="field-wrap">
-              <label class="field-label" for="ca">Major Vessels <span class="field-hint">0-4</span></label>
-              <input type="number" id="ca" name="ca" placeholder="0-4" min="0" max="4" required>
-            </div>
-            <div class="field-wrap">
-              <label class="field-label" for="thal">Thalassemia <span class="field-hint">1-3</span></label>
-              <input type="number" id="thal" name="thal" placeholder="1-3" min="1" max="3" required>
-            </div>
+        <div class="grid">
+          {% for field in fields %}
+          <div>
+            <label for="{{ field.name }}">{{ field.label }} <span>{{ field.hint }}</span></label>
+            <input id="{{ field.name }}" name="{{ field.name }}" type="number" step="{{ field.step }}" min="{{ field.min }}" max="{{ field.max }}" placeholder="{{ field.placeholder }}" value="{{ values.get(field.name, '') }}" required>
           </div>
-
-          <button type="submit" class="btn-predict">Run Prediction</button>
-
-          {% if error %}
-          <div class="error-message">{{ error }}</div>
-          {% endif %}
+          {% endfor %}
         </div>
+        <button class="predict" type="submit">Run Prediction</button>
+        {% if mode_message %}<div class="mode">{{ mode_message }}</div>{% endif %}
+        {% if error %}<div class="error">{{ error }}</div>{% endif %}
       </form>
 
       {% if prediction_text %}
-      <div class="divider"></div>
-
-      <div class="section-label">
-        <span class="dot"></span>
-        Assessment Result
-      </div>
-
-      <div class="result-section">
-        <p class="result-headline">{{ prediction_text }}</p>
-        <div class="risk-meter-wrap">
-          <div class="risk-meta">
-            <span class="risk-meta-label">Cardiovascular Risk Score</span>
-            <div class="risk-percentage">{{ risk }}<span>%</span></div>
-          </div>
-          <div class="risk-track">
-            <div class="risk-fill" id="riskFill"></div>
-          </div>
-          <div class="risk-scale">
-            <span class="risk-scale-item">Low</span>
-            <span class="risk-scale-item">Moderate</span>
-            <span class="risk-scale-item">High</span>
-          </div>
-        </div>
-
-        <div class="status-chips">
+      <div class="result">
+        <p class="headline">{{ prediction_text }}</p>
+        <div class="meta"><span>Cardiovascular Risk Score</span><span class="score">{{ risk }}%</span></div>
+        <div class="track"><div class="fill"></div></div>
+        <div class="chips">
           {% if risk < 30 %}
-          <span class="chip chip-low">Low Risk</span>
-          <span class="chip chip-low">Routine Monitoring</span>
+          <span class="chip">Low Risk</span><span class="chip">Routine Monitoring</span>
           {% elif risk < 65 %}
-          <span class="chip chip-medium">Moderate Risk</span>
-          <span class="chip chip-medium">Follow-Up Recommended</span>
+          <span class="chip">Moderate Risk</span><span class="chip">Follow-Up Recommended</span>
           {% else %}
-          <span class="chip chip-high">High Risk</span>
-          <span class="chip chip-high">Urgent Review Advised</span>
+          <span class="chip">High Risk</span><span class="chip">Medical Review Advised</span>
           {% endif %}
         </div>
       </div>
       {% endif %}
-    </div>
+    </section>
 
-    <p class="footer-note">
-      <strong>Clinical use disclaimer.</strong> This tool provides a statistical estimate only and is not a substitute for professional medical diagnosis.
-    </p>
-  </div>
+    <p class="note">This tool provides a statistical estimate only and is not a substitute for professional medical diagnosis.</p>
+  </main>
+
+  <button id="chat-toggle" aria-label="Open chat">?</button>
+  <section id="chat" aria-label="Heart health assistant">
+    <div class="chat-head">Heart Health Assistant</div>
+    <div id="messages"><div class="msg bot">Hi! Ask about blood pressure, cholesterol, exercise, or heart-disease risk factors.</div></div>
+    <div class="chat-row">
+      <input id="chat-input" type="text" placeholder="Ask a heart health question">
+      <button id="send" type="button">Go</button>
+    </div>
+  </section>
 
   <script>
-    var risk = parseFloat("{{ risk if risk is not none else 0 }}") || 0;
-    var bar = document.getElementById("riskFill");
-    if (bar) {
-      setTimeout(function() { bar.style.width = risk + "%"; }, 300);
+    const chat = document.getElementById("chat");
+    const messages = document.getElementById("messages");
+    const input = document.getElementById("chat-input");
+    document.getElementById("chat-toggle").addEventListener("click", () => chat.classList.toggle("open"));
+    async function sendMessage() {
+      const text = input.value.trim();
+      if (!text) return;
+      messages.insertAdjacentHTML("beforeend", `<div class="msg user"></div>`);
+      messages.lastElementChild.textContent = text;
+      input.value = "";
+      const pending = document.createElement("div");
+      pending.className = "msg bot";
+      pending.textContent = "Thinking...";
+      messages.appendChild(pending);
+      messages.scrollTop = messages.scrollHeight;
+      try {
+        const res = await fetch("/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: text }) });
+        const data = await res.json();
+        pending.textContent = data.reply || "I could not find an answer.";
+      } catch {
+        pending.textContent = "Connection error. Please try again.";
+      }
+      messages.scrollTop = messages.scrollHeight;
     }
+    document.getElementById("send").addEventListener("click", sendMessage);
+    input.addEventListener("keydown", (event) => { if (event.key === "Enter") sendMessage(); });
   </script>
 </body>
 </html>
 """
 
+FIELDS = [
+    {"name": "age", "label": "Age", "hint": "years", "placeholder": "54", "min": "1", "max": "120", "step": "1"},
+    {"name": "sex", "label": "Sex", "hint": "0=F, 1=M", "placeholder": "1", "min": "0", "max": "1", "step": "1"},
+    {"name": "cp", "label": "Chest Pain", "hint": "0-3", "placeholder": "0", "min": "0", "max": "3", "step": "1"},
+    {"name": "trestbps", "label": "Resting BP", "hint": "mm Hg", "placeholder": "120", "min": "1", "max": "260", "step": "1"},
+    {"name": "chol", "label": "Cholesterol", "hint": "mg/dl", "placeholder": "220", "min": "1", "max": "700", "step": "1"},
+    {"name": "fbs", "label": "Fasting Sugar", "hint": "0/1", "placeholder": "0", "min": "0", "max": "1", "step": "1"},
+    {"name": "restecg", "label": "Rest ECG", "hint": "0-2", "placeholder": "1", "min": "0", "max": "2", "step": "1"},
+    {"name": "thalach", "label": "Max Heart Rate", "hint": "bpm", "placeholder": "150", "min": "1", "max": "260", "step": "1"},
+    {"name": "exang", "label": "Exercise Angina", "hint": "0/1", "placeholder": "0", "min": "0", "max": "1", "step": "1"},
+    {"name": "oldpeak", "label": "ST Depression", "hint": "oldpeak", "placeholder": "1.2", "min": "0", "max": "10", "step": "0.1"},
+    {"name": "slope", "label": "Slope", "hint": "0-2", "placeholder": "1", "min": "0", "max": "2", "step": "1"},
+    {"name": "ca", "label": "Major Vessels", "hint": "0-4", "placeholder": "0", "min": "0", "max": "4", "step": "1"},
+    {"name": "thal", "label": "Thalassemia", "hint": "1-3", "placeholder": "2", "min": "1", "max": "3", "step": "1"},
+]
+
 
 def train_and_save_model():
-    if not DATA_PATH.exists():
-        raise FileNotFoundError(
-            "Missing model artifacts and heart.csv. Commit health.pkl and scaler.pkl, or add heart.csv."
-        )
-
     df = pd.read_csv(DATA_PATH)
     X = df[FEATURE_NAMES]
     y = df["target"]
+    stratify = y if y.nunique() > 1 else None
+    X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2, random_state=42, stratify=stratify)
 
-    X_train, _, y_train, _ = train_test_split(
-        X,
-        y,
-        test_size=0.2,
-        random_state=42,
-        stratify=y,
-    )
-
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-
-    model = RandomForestClassifier(n_estimators=100, random_state=42)
-    model.fit(X_train_scaled, y_train)
+    fitted_scaler = StandardScaler()
+    X_train_scaled = fitted_scaler.fit_transform(X_train)
+    fitted_model = RandomForestClassifier(n_estimators=100, random_state=42)
+    fitted_model.fit(X_train_scaled, y_train)
 
     with MODEL_PATH.open("wb") as model_file:
-        pickle.dump(model, model_file)
-
+        pickle.dump(fitted_model, model_file)
     with SCALER_PATH.open("wb") as scaler_file:
-        pickle.dump(scaler, scaler_file)
+        pickle.dump(fitted_scaler, scaler_file)
 
-    return model, scaler
+    return fitted_model, fitted_scaler, "Trained from heart.csv."
 
 
-def load_artifacts():
+def load_model():
     if MODEL_PATH.exists() and SCALER_PATH.exists():
         with MODEL_PATH.open("rb") as model_file:
-            model = pickle.load(model_file)
+            fitted_model = pickle.load(model_file)
         with SCALER_PATH.open("rb") as scaler_file:
-            scaler = pickle.load(scaler_file)
-        return model, scaler
+            fitted_scaler = pickle.load(scaler_file)
+        return fitted_model, fitted_scaler, "Loaded saved health.pkl and scaler.pkl."
 
-    return train_and_save_model()
+    if DATA_PATH.exists():
+        return train_and_save_model()
+
+    return None, None, "No health.pkl/scaler.pkl or heart.csv found, so predictions use fallback demo scoring."
+
+
+def fallback_probability(values):
+    data = dict(zip(FEATURE_NAMES, values))
+    score = 8
+    score += max(0, data["age"] - 45) * 0.55
+    score += 8 if data["sex"] == 1 else 3
+    score += data["cp"] * 7
+    score += max(0, data["trestbps"] - 120) * 0.18
+    score += max(0, data["chol"] - 200) * 0.08
+    score += data["fbs"] * 5
+    score += data["restecg"] * 4
+    score += max(0, 150 - data["thalach"]) * 0.16
+    score += data["exang"] * 11
+    score += data["oldpeak"] * 5
+    score += data["slope"] * 3
+    score += data["ca"] * 8
+    score += max(0, data["thal"] - 1) * 7
+    return min(max(score / 100, 0.03), 0.97)
+
+
+def predict_probability(values):
+    if model is None or scaler is None:
+        probability = fallback_probability(values)
+        return int(probability >= 0.5), probability
+
+    scaled = scaler.transform([values])
+    prediction = int(model.predict(scaled)[0])
+    probability = float(model.predict_proba(scaled)[0][1])
+    return prediction, probability
+
+
+def retrieve_documents(query, limit=3):
+    words = set(re.findall(r"[a-z0-9]+", query.lower()))
+    ranked = []
+    for document in DOCUMENTS:
+        doc_words = set(re.findall(r"[a-z0-9]+", document.lower()))
+        ranked.append((len(words & doc_words), document))
+    ranked.sort(reverse=True)
+    matches = [document for score, document in ranked if score > 0]
+    return (matches or DOCUMENTS[:limit])[:limit]
 
 
 app = Flask(__name__)
-model = None
-scaler = None
-startup_error = None
-
-try:
-    model, scaler = load_artifacts()
-except Exception as exc:
-    startup_error = str(exc)
+model, scaler, model_mode = load_model()
 
 
 @app.route("/")
 def home():
     return render_template_string(
         HTML_TEMPLATE,
+        fields=FIELDS,
+        values={},
         prediction_text=None,
         risk=None,
-        error=startup_error,
+        mode_message=model_mode,
+        error=None,
     )
 
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    if startup_error or model is None or scaler is None:
-        return render_template_string(
-            HTML_TEMPLATE,
-            prediction_text=None,
-            risk=None,
-            error=startup_error or "Model is not available.",
-        ), 503
-
+    values = request.form.to_dict()
     try:
-        user_input = [float(request.form[name]) for name in FEATURE_NAMES]
-        user_scaled = scaler.transform([user_input])
-        prediction = int(model.predict(user_scaled)[0])
-        probability = float(model.predict_proba(user_scaled)[0][1])
-        result = "Heart Disease" if prediction == 1 else "No Heart Disease"
+        user_input = [float(values[name]) for name in FEATURE_NAMES]
+    except (KeyError, ValueError):
+        return render_template_string(
+            HTML_TEMPLATE,
+            fields=FIELDS,
+            values=values,
+            prediction_text=None,
+            risk=None,
+            mode_message=model_mode,
+            error="Please enter valid numeric values for every field.",
+        ), 400
 
-        return render_template_string(
-            HTML_TEMPLATE,
-            prediction_text=result,
-            risk=round(probability * 100, 2),
-            error=None,
-        )
-    except KeyError as exc:
-        return render_template_string(
-            HTML_TEMPLATE,
-            prediction_text=None,
-            risk=None,
-            error=f"Missing field: {exc.args[0]}",
-        ), 400
-    except ValueError:
-        return render_template_string(
-            HTML_TEMPLATE,
-            prediction_text=None,
-            risk=None,
-            error="Please enter valid numeric values for all fields.",
-        ), 400
+    prediction, probability = predict_probability(user_input)
+    result = "Heart Disease" if prediction == 1 else "No Heart Disease"
+
+    return render_template_string(
+        HTML_TEMPLATE,
+        fields=FIELDS,
+        values=values,
+        prediction_text=result,
+        risk=round(probability * 100, 2),
+        mode_message=model_mode,
+        error=None,
+    )
+
+
+@app.route("/chat", methods=["POST"])
+def chat():
+    payload = request.get_json(silent=True) or {}
+    user_message = payload.get("message", "").strip()
+    if not user_message:
+        return jsonify({"reply": "Please ask a heart-health question."})
+
+    context = retrieve_documents(user_message)
+    bullets = "\n".join(f"- {item}" for item in context)
+    reply = (
+        f"{bullets}\n"
+        "- This is general education only. For symptoms, diagnosis, or treatment, talk with a qualified clinician."
+    )
+    return jsonify({"reply": reply})
 
 
 if __name__ == "__main__":
