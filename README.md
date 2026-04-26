@@ -144,7 +144,7 @@ Deploy `app.py`, not `updated_health.py`.
 - Start command: `gunicorn app:app`
 - Python version: `3.11.9`
 
-If `health.pkl` and `scaler.pkl` are present, the app loads them. If `heart.csv` is present, the app trains and saves those artifacts on startup. If none of those files are present, the app still deploys and uses fallback demo scoring.
+For real predictions, commit either `health.pkl` and `scaler.pkl`, or commit `heart.csv` so the app can train the model on startup. Without those files, the app will show an error instead of returning demo predictions.
 
 ---
 

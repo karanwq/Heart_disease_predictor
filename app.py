@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 
 import pandas as pd
-from flask import Flask, jsonify, render_template_string, request
+from flask import Flask, jsonify, redirect, render_template_string, request, url_for
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
@@ -41,39 +41,45 @@ HTML_TEMPLATE = """
   <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
   <style>
     :root { --red: #e24b4a; --teal: #1d9e75; --amber: #ba7517; --ink: #2e2d2b; --paper: #f4f2ec; }
-    * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; font-family: 'DM Sans', sans-serif; background: var(--paper); color: var(--ink); }
-    body::before { content: ""; position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 18% 8%, rgba(226,75,74,.08), transparent 55%), radial-gradient(ellipse at 88% 80%, rgba(29,158,117,.08), transparent 50%); }
-    .page { position: relative; width: min(920px, calc(100% - 32px)); margin: 0 auto; padding: 42px 0 84px; }
-    header { text-align: center; margin-bottom: 28px; }
-    .heart { width: 34px; height: 34px; animation: beat 1.7s ease-in-out infinite; }
-    .eyebrow { margin-top: 10px; color: var(--red); font-size: 11px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; }
-    h1 { margin: 10px 0 8px; font-family: 'DM Serif Display', serif; font-size: clamp(2.4rem, 7vw, 4rem); font-weight: 400; line-height: .95; }
-    h1 em { color: var(--red); }
-    .sub { margin: 0 auto; max-width: 520px; color: rgba(46,45,43,.62); line-height: 1.6; }
-    .panel { background: #fff; border: 1px solid rgba(46,45,43,.1); border-radius: 8px; box-shadow: 0 14px 45px rgba(46,45,43,.08); overflow: hidden; }
-    .label { padding: 18px 24px 10px; border-bottom: 1px solid rgba(46,45,43,.07); color: rgba(46,45,43,.48); font-size: 10px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; }
-    form { padding: 22px 24px 24px; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
-    label { display: block; margin-bottom: 6px; color: rgba(46,45,43,.55); font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
-    label span { color: rgba(46,45,43,.35); font-weight: 500; text-transform: none; }
-    input { width: 100%; min-height: 42px; padding: 9px 12px; border: 1px solid rgba(46,45,43,.16); border-radius: 8px; background: #f8f7f3; color: var(--ink); font: inherit; }
-    input:focus { outline: none; border-color: rgba(226,75,74,.58); background: #fff; }
-    .predict { width: 100%; margin-top: 18px; min-height: 48px; border: 0; border-radius: 8px; background: var(--red); color: #fff; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; cursor: pointer; }
-    .result { padding: 22px 24px 26px; border-top: 1px solid rgba(46,45,43,.08); }
-    .headline { margin: 0 0 16px; font-family: 'DM Serif Display', serif; font-size: 1.7rem; }
-    .meta { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 8px; }
-    .score { font-family: 'DM Serif Display', serif; font-size: 2.1rem; }
-    .track { height: 9px; overflow: hidden; border-radius: 999px; background: rgba(46,45,43,.09); }
-    .fill { height: 100%; width: {{ risk if risk else 0 }}%; background: linear-gradient(90deg, var(--teal), var(--amber), var(--red)); }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { min-height: 100vh; overflow-x: hidden; font-family: 'DM Sans', sans-serif; background: var(--paper); color: var(--ink); }
+    body::before { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; background: radial-gradient(ellipse 80% 60% at 20% 10%, rgba(226,75,74,.07) 0%, transparent 60%), radial-gradient(ellipse 60% 50% at 80% 80%, rgba(29,158,117,.06) 0%, transparent 55%), radial-gradient(ellipse 40% 40% at 60% 30%, rgba(186,117,23,.04) 0%, transparent 50%); }
+    .page { position: relative; z-index: 1; width: min(820px, calc(100% - 48px)); margin: 0 auto; padding: 3rem 0 5rem; }
+    header { text-align: center; margin-bottom: 3rem; animation: fadeDown .7s ease both; }
+    .heart { width: 32px; height: 32px; margin-bottom: 1.25rem; animation: beat 1.6s ease-in-out infinite; }
+    .eyebrow { margin-bottom: 1rem; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--red); font-size: 11px; font-weight: 600; letter-spacing: .25em; text-transform: uppercase; }
+    .eyebrow::before, .eyebrow::after { content: ""; display: block; width: 40px; height: 1px; background: var(--red); opacity: .5; }
+    h1 { margin-bottom: .75rem; color: var(--ink); font-family: 'DM Serif Display', serif; font-size: clamp(2.4rem, 5vw, 3.6rem); font-weight: 400; line-height: 1.1; }
+    h1 em { color: var(--red); font-style: italic; }
+    .sub { max-width: 380px; margin: 0 auto; color: rgba(46,45,43,.5); font-size: 15px; font-weight: 300; line-height: 1.6; }
+    .ecg-line { width: 100%; max-width: 340px; margin: .75rem auto 0; opacity: .18; }
+    .panel { width: 100%; overflow: hidden; background: #fff; border: 1px solid rgba(46,45,43,.08); border-radius: 24px; box-shadow: 0 4px 24px rgba(46,45,43,.07); animation: fadeUp .8s .15s ease both; }
+    .label { padding: 1.5rem 2rem .75rem; border-bottom: 1px solid rgba(46,45,43,.06); color: rgba(46,45,43,.4); font-size: 10px; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; }
+    form { padding: 1.5rem 2rem 2rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 1.75rem; }
+    label { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; color: rgba(46,45,43,.5); font-size: 11px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; }
+    label span { color: rgba(46,45,43,.35); font-size: 10px; font-weight: 300; text-transform: none; }
+    input { width: 100%; min-height: 40px; padding: 10px 14px; border: 1px solid rgba(46,45,43,.14); border-radius: 10px; background: #f7f6f2; color: var(--ink); font: 400 14px 'DM Sans', sans-serif; outline: none; transition: border-color .2s, background .2s; }
+    input::placeholder { color: rgba(46,45,43,.3); }
+    input:hover:not(:focus) { border-color: rgba(46,45,43,.25); }
+    input:focus { border-color: rgba(226,75,74,.5); background: #fff; }
+    .predict { width: 100%; min-height: 48px; padding: 15px 28px; border: 0; border-radius: 12px; background: var(--red); color: #fff; font: 600 14px 'DM Sans', sans-serif; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; transition: transform .15s, opacity .2s; }
+    .predict:hover { opacity: .88; transform: translateY(-1px); }
+    .result { padding: 1.75rem 2rem 2rem; border-top: 1px solid rgba(46,45,43,.07); }
+    .headline { margin-bottom: 1.25rem; color: var(--ink); font-family: 'DM Serif Display', serif; font-size: 1.6rem; font-weight: 400; line-height: 1.3; }
+    .meta { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 10px; color: rgba(46,45,43,.4); font-size: 11px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; }
+    .score { color: var(--ink); font-family: 'DM Serif Display', serif; font-size: 2rem; line-height: 1; letter-spacing: 0; text-transform: none; }
+    .track { position: relative; height: 8px; overflow: hidden; border-radius: 100px; background: rgba(46,45,43,.08); }
+    .fill { height: 100%; width: {{ risk if risk else 0 }}%; border-radius: 100px; background: linear-gradient(90deg, var(--teal) 0%, var(--amber) 55%, var(--red) 100%); transition: width 1.2s cubic-bezier(.4,0,.2,1); }
     .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-    .chip { padding: 6px 12px; border-radius: 999px; font-size: 12px; background: rgba(226,75,74,.1); color: #9b2d2d; }
-    .mode, .error { margin-top: 14px; padding: 11px 13px; border-radius: 8px; font-size: 13px; line-height: 1.45; }
-    .mode { background: rgba(186,117,23,.1); color: #7d520f; }
-    .error { background: rgba(226,75,74,.12); color: #9b2d2d; }
-    .note { max-width: 560px; margin: 22px auto 0; text-align: center; color: rgba(46,45,43,.48); font-size: 12px; line-height: 1.6; }
-    #chat-toggle { position: fixed; right: 24px; bottom: 24px; width: 56px; height: 56px; border: 0; border-radius: 50%; background: var(--red); color: #fff; font-size: 24px; cursor: pointer; box-shadow: 0 12px 32px rgba(226,75,74,.34); }
-    #chat { position: fixed; right: 24px; bottom: 92px; width: min(360px, calc(100% - 32px)); max-height: 520px; display: none; flex-direction: column; overflow: hidden; background: #fff; border: 1px solid rgba(46,45,43,.12); border-radius: 8px; box-shadow: 0 20px 60px rgba(46,45,43,.18); }
+    .chip { padding: 5px 14px; border-radius: 100px; font-size: 12px; font-weight: 500; letter-spacing: .04em; background: rgba(226,75,74,.15); color: #f09595; border: .5px solid rgba(226,75,74,.3); }
+    .mode, .error { margin: 0 2rem 1rem; padding: 11px 13px; border-radius: 10px; font-size: 13px; line-height: 1.45; }
+    .mode { background: rgba(186,117,23,.1); color: #8a5a0f; border: 1px solid rgba(186,117,23,.25); }
+    .error { background: rgba(226,75,74,.1); color: #a32d2d; border: 1px solid rgba(226,75,74,.25); }
+    .note { max-width: 500px; margin: 2.5rem auto 0; text-align: center; color: rgba(46,45,43,.35); font-size: 12px; font-weight: 300; line-height: 1.7; }
+    #chat-toggle { position: fixed; right: 24px; bottom: 24px; z-index: 1001; min-width: 112px; height: 52px; padding: 0 18px; border: 0; border-radius: 999px; display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--red); color: #fff; font: 700 15px 'DM Sans', sans-serif; cursor: pointer; box-shadow: 0 12px 32px rgba(226,75,74,.38); }
+    #chat-toggle:hover { filter: brightness(.96); transform: translateY(-1px); }
+    #chat { position: fixed; right: 24px; bottom: 92px; z-index: 1000; width: min(360px, calc(100% - 32px)); max-height: 520px; display: none; flex-direction: column; overflow: hidden; background: #fff; border: 1px solid rgba(46,45,43,.12); border-radius: 8px; box-shadow: 0 20px 60px rgba(46,45,43,.18); }
     #chat.open { display: flex; }
     .chat-head { padding: 14px 16px; background: var(--red); color: #fff; font-weight: 700; }
     #messages { min-height: 220px; max-height: 360px; overflow-y: auto; padding: 14px; background: #f8f7f3; }
@@ -92,7 +98,10 @@ HTML_TEMPLATE = """
       <svg class="heart" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 28S3 20.5 3 11.5C3 7.36 6.13 4 10 4c2.35 0 4.43 1.21 6 3 1.57-1.79 3.65-3 6-3 3.87 0 7 3.36 7 7.5C29 20.5 16 28 16 28Z" fill="#e24b4a"/></svg>
       <div class="eyebrow">AI Clinical Assessment</div>
       <h1>Heart Risk<br><em>Predictor</em></h1>
-      <p class="sub">Deployed Flask version of the health notebook with a prediction form and heart-health chatbot.</p>
+      <p class="sub">Enter patient clinical data below for an AI-powered cardiovascular risk assessment.</p>
+      <svg class="ecg-line" viewBox="0 0 340 28" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <polyline points="0,14 40,14 52,14 60,2 68,26 74,6 82,22 90,14 130,14 170,14 210,14 250,14 290,14 340,14" fill="none" stroke="#e24b4a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
     </header>
 
     <section class="panel">
@@ -107,9 +116,9 @@ HTML_TEMPLATE = """
           {% endfor %}
         </div>
         <button class="predict" type="submit">Run Prediction</button>
+      </form>
         {% if mode_message %}<div class="mode">{{ mode_message }}</div>{% endif %}
         {% if error %}<div class="error">{{ error }}</div>{% endif %}
-      </form>
 
       {% if prediction_text %}
       <div class="result">
@@ -132,7 +141,7 @@ HTML_TEMPLATE = """
     <p class="note">This tool provides a statistical estimate only and is not a substitute for professional medical diagnosis.</p>
   </main>
 
-  <button id="chat-toggle" aria-label="Open chat">?</button>
+  <button id="chat-toggle" type="button" aria-label="Open chat">Chat</button>
   <section id="chat" aria-label="Heart health assistant">
     <div class="chat-head">Heart Health Assistant</div>
     <div id="messages"><div class="msg bot">Hi! Ask about blood pressure, cholesterol, exercise, or heart-disease risk factors.</div></div>
@@ -222,32 +231,16 @@ def load_model():
     if DATA_PATH.exists():
         return train_and_save_model()
 
-    return None, None, "No health.pkl/scaler.pkl or heart.csv found, so predictions use fallback demo scoring."
-
-
-def fallback_probability(values):
-    data = dict(zip(FEATURE_NAMES, values))
-    score = 8
-    score += max(0, data["age"] - 45) * 0.55
-    score += 8 if data["sex"] == 1 else 3
-    score += data["cp"] * 7
-    score += max(0, data["trestbps"] - 120) * 0.18
-    score += max(0, data["chol"] - 200) * 0.08
-    score += data["fbs"] * 5
-    score += data["restecg"] * 4
-    score += max(0, 150 - data["thalach"]) * 0.16
-    score += data["exang"] * 11
-    score += data["oldpeak"] * 5
-    score += data["slope"] * 3
-    score += data["ca"] * 8
-    score += max(0, data["thal"] - 1) * 7
-    return min(max(score / 100, 0.03), 0.97)
+    return (
+        None,
+        None,
+        "Missing model files. Add health.pkl and scaler.pkl, or add heart.csv so the app can train a real model.",
+    )
 
 
 def predict_probability(values):
     if model is None or scaler is None:
-        probability = fallback_probability(values)
-        return int(probability >= 0.5), probability
+        raise RuntimeError(model_mode)
 
     scaled = scaler.transform([values])
     prediction = int(model.predict(scaled)[0])
@@ -283,8 +276,11 @@ def home():
     )
 
 
-@app.route("/predict", methods=["POST"])
+@app.route("/predict", methods=["GET", "POST"])
 def predict():
+    if request.method == "GET":
+        return redirect(url_for("home"))
+
     values = request.form.to_dict()
     try:
         user_input = [float(values[name]) for name in FEATURE_NAMES]
@@ -299,7 +295,19 @@ def predict():
             error="Please enter valid numeric values for every field.",
         ), 400
 
-    prediction, probability = predict_probability(user_input)
+    try:
+        prediction, probability = predict_probability(user_input)
+    except RuntimeError as exc:
+        return render_template_string(
+            HTML_TEMPLATE,
+            fields=FIELDS,
+            values=values,
+            prediction_text=None,
+            risk=None,
+            mode_message=None,
+            error=str(exc),
+        ), 503
+
     result = "Heart Disease" if prediction == 1 else "No Heart Disease"
 
     return render_template_string(
