@@ -70,26 +70,36 @@ HTML_TEMPLATE = """
     .meta { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 10px; color: rgba(46,45,43,.4); font-size: 11px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; }
     .score { color: var(--ink); font-family: 'DM Serif Display', serif; font-size: 2rem; line-height: 1; letter-spacing: 0; text-transform: none; }
     .track { position: relative; height: 8px; overflow: hidden; border-radius: 100px; background: rgba(46,45,43,.08); }
-    .fill { height: 100%; width: {{ risk if risk else 0 }}%; border-radius: 100px; background: linear-gradient(90deg, var(--teal) 0%, var(--amber) 55%, var(--red) 100%); transition: width 1.2s cubic-bezier(.4,0,.2,1); }
+    .fill { height: 100%; width: 0%; border-radius: 100px; background: linear-gradient(90deg, var(--teal) 0%, var(--amber) 55%, var(--red) 100%); transition: width 1.2s cubic-bezier(.4,0,.2,1); }
+    .risk-scale { display: flex; justify-content: space-between; margin-top: 6px; }
+    .risk-scale span { color: rgba(46,45,43,.35); font-size: 10px; letter-spacing: .04em; }
     .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-    .chip { padding: 5px 14px; border-radius: 100px; font-size: 12px; font-weight: 500; letter-spacing: .04em; background: rgba(226,75,74,.15); color: #f09595; border: .5px solid rgba(226,75,74,.3); }
+    .chip { padding: 5px 14px; border-radius: 100px; font-size: 12px; font-weight: 500; letter-spacing: .04em; }
+    .chip-low { background: rgba(29,158,117,.1); color: #0f6e56; border: 1px solid rgba(29,158,117,.25); }
+    .chip-medium { background: rgba(186,117,23,.1); color: #8a5a0f; border: 1px solid rgba(186,117,23,.25); }
+    .chip-high { background: rgba(226,75,74,.1); color: #a32d2d; border: 1px solid rgba(226,75,74,.25); }
     .mode, .error { margin: 0 2rem 1rem; padding: 11px 13px; border-radius: 10px; font-size: 13px; line-height: 1.45; }
     .mode { background: rgba(186,117,23,.1); color: #8a5a0f; border: 1px solid rgba(186,117,23,.25); }
     .error { background: rgba(226,75,74,.1); color: #a32d2d; border: 1px solid rgba(226,75,74,.25); }
     .note { max-width: 500px; margin: 2.5rem auto 0; text-align: center; color: rgba(46,45,43,.35); font-size: 12px; font-weight: 300; line-height: 1.7; }
-    #chat-toggle { position: fixed; right: 24px; bottom: 24px; z-index: 1001; width: 56px; height: 56px; border: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--red); color: #fff; cursor: pointer; box-shadow: 0 12px 32px rgba(226,75,74,.38); }
-    #chat-toggle svg { width: 24px; height: 24px; }
-    #chat-toggle:hover { filter: brightness(.96); transform: translateY(-1px); }
-    #chat { position: fixed; right: 24px; bottom: 92px; z-index: 1000; width: min(360px, calc(100% - 32px)); max-height: 520px; display: none; flex-direction: column; overflow: hidden; background: #fff; border: 1px solid rgba(46,45,43,.12); border-radius: 8px; box-shadow: 0 20px 60px rgba(46,45,43,.18); }
-    #chat.open { display: flex; }
-    .chat-head { padding: 14px 16px; background: var(--red); color: #fff; font-weight: 700; }
-    #messages { min-height: 220px; max-height: 360px; overflow-y: auto; padding: 14px; background: #f8f7f3; }
-    .msg { width: fit-content; max-width: 86%; margin: 0 0 10px; padding: 9px 12px; border-radius: 8px; font-size: 13px; line-height: 1.45; white-space: pre-line; }
-    .bot { background: #fff; border: 1px solid rgba(46,45,43,.1); }
-    .user { margin-left: auto; background: var(--red); color: #fff; }
-    .chat-row { display: flex; gap: 8px; padding: 10px; border-top: 1px solid rgba(46,45,43,.08); }
-    #chat-input { flex: 1; }
-    #send { width: 42px; border: 0; border-radius: 8px; background: var(--red); color: #fff; cursor: pointer; }
+    #chat-toggle { position: fixed; right: 28px; bottom: 28px; z-index: 1000; width: 56px; height: 56px; border: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--red); color: #fff; cursor: pointer; box-shadow: 0 4px 18px rgba(226,75,74,.35); transition: transform .2s, box-shadow .2s; }
+    #chat-toggle:hover { transform: scale(1.08); box-shadow: 0 6px 24px rgba(226,75,74,.45); }
+    #chat-window { position: fixed; right: 28px; bottom: 96px; z-index: 999; width: 340px; max-height: 500px; display: none; flex-direction: column; overflow: hidden; background: #fff; border: 1px solid rgba(46,45,43,.1); border-radius: 20px; box-shadow: 0 8px 40px rgba(46,45,43,.13); animation: fadeUp .25s ease both; }
+    #chat-window.open { display: flex; }
+    .chat-header { display: flex; align-items: center; gap: 10px; padding: 14px 18px; background: var(--red); }
+    .chat-header-icon { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: rgba(255,255,255,.2); }
+    .chat-header-text h3 { color: #fff; font-size: 13px; font-weight: 600; line-height: 1.2; }
+    .chat-header-text p { color: rgba(255,255,255,.7); font-size: 11px; font-weight: 300; }
+    #chat-messages { flex: 1; overflow-y: auto; padding: 14px 14px 8px; display: flex; flex-direction: column; gap: 10px; background: #f7f6f2; }
+    .msg { max-width: 85%; padding: 9px 13px; border-radius: 14px; font-size: 13px; line-height: 1.5; white-space: pre-line; }
+    .msg.bot { align-self: flex-start; background: #fff; color: var(--ink); border: 1px solid rgba(46,45,43,.1); border-bottom-left-radius: 4px; }
+    .msg.user { align-self: flex-end; background: var(--red); color: #fff; border-bottom-right-radius: 4px; }
+    .msg.typing { align-self: flex-start; background: #fff; color: rgba(46,45,43,.4); border: 1px solid rgba(46,45,43,.1); font-style: italic; font-size: 12px; }
+    .chat-input-row { display: flex; gap: 8px; padding: 10px 12px; background: #fff; border-top: 1px solid rgba(46,45,43,.07); }
+    #chat-input { flex: 1; resize: none; padding: 9px 12px; border: 1px solid rgba(46,45,43,.14); border-radius: 10px; background: #f7f6f2; color: var(--ink); font: 400 13px 'DM Sans', sans-serif; outline: none; }
+    #chat-input:focus { border-color: rgba(226,75,74,.45); background: #fff; }
+    #chat-send { width: 36px; height: 36px; align-self: flex-end; flex-shrink: 0; border: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: var(--red); color: #fff; cursor: pointer; transition: opacity .2s; }
+    #chat-send:hover { opacity: .85; }
     @keyframes beat { 0%, 100% { transform: scale(1); } 20% { transform: scale(1.18); } 34% { transform: scale(1); } }
   </style>
 </head>
@@ -116,7 +126,7 @@ HTML_TEMPLATE = """
           </div>
           {% endfor %}
         </div>
-        <button class="predict" type="submit">Run Prediction</button>
+        <button class="predict" type="submit">Run Prediction &rarr;</button>
       </form>
         {% if error %}<div class="error">{{ error }}</div>{% endif %}
 
@@ -124,14 +134,15 @@ HTML_TEMPLATE = """
       <div class="result">
         <p class="headline">{{ prediction_text }}</p>
         <div class="meta"><span>Cardiovascular Risk Score</span><span class="score">{{ risk }}%</span></div>
-        <div class="track"><div class="fill"></div></div>
+        <div class="track"><div class="fill" id="riskFill"></div></div>
+        <div class="risk-scale"><span>Low</span><span>Moderate</span><span>High</span></div>
         <div class="chips">
           {% if risk < 30 %}
-          <span class="chip">Low Risk</span><span class="chip">Routine Monitoring</span>
+          <span class="chip chip-low">Low Risk</span><span class="chip chip-low">Routine Monitoring</span>
           {% elif risk < 65 %}
-          <span class="chip">Moderate Risk</span><span class="chip">Follow-Up Recommended</span>
+          <span class="chip chip-medium">Moderate Risk</span><span class="chip chip-medium">Follow-Up Recommended</span>
           {% else %}
-          <span class="chip">High Risk</span><span class="chip">Medical Review Advised</span>
+          <span class="chip chip-high">High Risk</span><span class="chip chip-high">Urgent Review Advised</span>
           {% endif %}
         </div>
       </div>
@@ -141,47 +152,104 @@ HTML_TEMPLATE = """
     <p class="note">This tool provides a statistical estimate only and is not a substitute for professional medical diagnosis.</p>
   </main>
 
-  <button id="chat-toggle" type="button" aria-label="Open chat">
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-      <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <button id="chat-toggle" type="button" title="Ask a health question" aria-label="Open chat">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <path d="M21 15C21 15.5304 20.7893 16.0391 20.4142 16.4142C20.0391 16.7893 19.5304 17 19 17H7L3 21V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H19C19.5304 3 20.0391 3.21071 20.4142 3.58579C20.7893 3.96086 21 4.46957 21 5V15Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>
-  <section id="chat" aria-label="Heart health assistant">
-    <div class="chat-head">Heart Health Assistant</div>
-    <div id="messages"><div class="msg bot">Hi! Ask about blood pressure, cholesterol, exercise, or heart-disease risk factors.</div></div>
-    <div class="chat-row">
-      <input id="chat-input" type="text" placeholder="Ask a heart health question">
-      <button id="send" type="button">Go</button>
+  <section id="chat-window" aria-label="Heart health assistant">
+    <div class="chat-header">
+      <div class="chat-header-icon">
+        <svg width="16" height="16" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <path d="M16 28C16 28 3 20.5 3 11.5C3 7.36 6.13 4 10 4C12.35 4 14.43 5.21 16 7C17.57 5.21 19.65 4 22 4C25.87 4 29 7.36 29 11.5C29 20.5 16 28 16 28Z" fill="white"/>
+        </svg>
+      </div>
+      <div class="chat-header-text">
+        <h3>Heart Health Assistant</h3>
+        <p>Powered by RAG - Ask anything</p>
+      </div>
+    </div>
+
+    <div id="chat-messages">
+      <div class="msg bot">Hi! I can answer questions about heart health, risk factors, and your results. What would you like to know?</div>
+    </div>
+
+    <div class="chat-input-row">
+      <textarea id="chat-input" rows="1" placeholder="Ask about cholesterol, BP, risk factors..."></textarea>
+      <button id="chat-send" type="button" aria-label="Send">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
     </div>
   </section>
 
   <script>
-    const chat = document.getElementById("chat");
-    const messages = document.getElementById("messages");
-    const input = document.getElementById("chat-input");
-    document.getElementById("chat-toggle").addEventListener("click", () => chat.classList.toggle("open"));
+    var risk = parseFloat("{{ risk if risk else 0 }}") || 0;
+    var riskBar = document.getElementById("riskFill");
+    if (riskBar) {
+      setTimeout(function() { riskBar.style.width = risk + "%"; }, 300);
+    }
+
+    var chatWindow = document.getElementById("chat-window");
+    var chatInput = document.getElementById("chat-input");
+    var messages = document.getElementById("chat-messages");
+
+    document.getElementById("chat-toggle").addEventListener("click", function() {
+      chatWindow.classList.toggle("open");
+    });
+
+    chatInput.addEventListener("input", function() {
+      this.style.height = "auto";
+      this.style.height = Math.min(this.scrollHeight, 100) + "px";
+    });
+
     async function sendMessage() {
-      const text = input.value.trim();
+      var text = chatInput.value.trim();
       if (!text) return;
-      messages.insertAdjacentHTML("beforeend", `<div class="msg user"></div>`);
-      messages.lastElementChild.textContent = text;
-      input.value = "";
-      const pending = document.createElement("div");
-      pending.className = "msg bot";
+
+      var userMsg = document.createElement("div");
+      userMsg.className = "msg user";
+      userMsg.textContent = text;
+      messages.appendChild(userMsg);
+
+      chatInput.value = "";
+      chatInput.style.height = "auto";
+
+      var pending = document.createElement("div");
+      pending.className = "msg typing";
+      pending.id = "typing-indicator";
       pending.textContent = "Thinking...";
       messages.appendChild(pending);
       messages.scrollTop = messages.scrollHeight;
+
       try {
-        const res = await fetch("/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: text }) });
-        const data = await res.json();
-        pending.textContent = data.reply || "I could not find an answer.";
+        var res = await fetch("/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text })
+        });
+        var data = await res.json();
+        pending.className = "msg bot";
+        pending.removeAttribute("id");
+        pending.textContent = data.reply || "Sorry, I could not find an answer.";
       } catch {
+        pending.className = "msg bot";
+        pending.removeAttribute("id");
         pending.textContent = "Connection error. Please try again.";
       }
+
       messages.scrollTop = messages.scrollHeight;
     }
-    document.getElementById("send").addEventListener("click", sendMessage);
-    input.addEventListener("keydown", (event) => { if (event.key === "Enter") sendMessage(); });
+
+    document.getElementById("chat-send").addEventListener("click", sendMessage);
+    chatInput.addEventListener("keydown", function(event) {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        sendMessage();
+      }
+    });
   </script>
 </body>
 </html>
