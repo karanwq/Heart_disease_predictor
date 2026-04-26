@@ -549,16 +549,36 @@ def load_artifacts():
 
 
 app = Flask(__name__)
-model, scaler = load_artifacts()
+model = None
+scaler = None
+startup_error = None
+
+try:
+    model, scaler = load_artifacts()
+except Exception as exc:
+    startup_error = str(exc)
 
 
 @app.route("/")
 def home():
-    return render_template_string(HTML_TEMPLATE, prediction_text=None, risk=None, error=None)
+    return render_template_string(
+        HTML_TEMPLATE,
+        prediction_text=None,
+        risk=None,
+        error=startup_error,
+    )
 
 
 @app.route("/predict", methods=["POST"])
 def predict():
+    if startup_error or model is None or scaler is None:
+        return render_template_string(
+            HTML_TEMPLATE,
+            prediction_text=None,
+            risk=None,
+            error=startup_error or "Model is not available.",
+        ), 503
+
     try:
         user_input = [float(request.form[name]) for name in FEATURE_NAMES]
         user_scaled = scaler.transform([user_input])
