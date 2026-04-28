@@ -1,5 +1,6 @@
-# RAG PDFs
+# Project PDFs
 
-Place PDF files in this folder to load them as retrieval sources when the Flask app starts.
+Store project PDF documents here.
 
-You can also add PDFs from the chat panel in the app. Uploaded PDFs are saved here and chunked into searchable text for the assistant.
+Current file:
+- `who_ai.pdf`
