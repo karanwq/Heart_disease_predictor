@@ -8,12 +8,22 @@ from flask import Flask, jsonify, redirect, render_template_string, request, url
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from werkzeug.utils import secure_filename
+
+try:
+    from pypdf import PdfReader
+except ImportError:
+    PdfReader = None
 
 
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = BASE_DIR / "health.pkl"
 SCALER_PATH = BASE_DIR / "scaler.pkl"
 DATA_PATH = BASE_DIR / "heart.csv"
+PDF_DIR = BASE_DIR / "rag_pdfs"
+MAX_PDF_BYTES = 8 * 1024 * 1024
+CHUNK_WORDS = 120
+CHUNK_OVERLAP = 30
 
 FEATURE_NAMES = [
     "age", "sex", "cp", "trestbps", "chol", "fbs", "restecg",
@@ -30,6 +40,7 @@ DOCUMENTS = [
     "Diabetes damages blood vessels and contributes to heart disease.",
     "Chest pain, exercise angina, and abnormal ECG findings can be warning signs that need medical review.",
 ]
+PDF_DOCUMENTS = []
 
 HTML_TEMPLATE = """
 <!doctype html>
@@ -100,6 +111,10 @@ HTML_TEMPLATE = """
     #chat-input:focus { border-color: rgba(226,75,74,.45); background: #fff; }
     #chat-send { width: 36px; height: 36px; align-self: flex-end; flex-shrink: 0; border: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: var(--red); color: #fff; cursor: pointer; transition: opacity .2s; }
     #chat-send:hover { opacity: .85; }
+    .rag-upload { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-top: 1px solid rgba(46,45,43,.07); background: #fff; }
+    .rag-upload label { width: 100%; min-height: 34px; margin: 0; padding: 8px 11px; border: 1px dashed rgba(46,45,43,.2); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: rgba(46,45,43,.5); background: #f7f6f2; font-size: 11px; line-height: 1.2; letter-spacing: .08em; cursor: pointer; }
+    .rag-upload label:hover { border-color: rgba(226,75,74,.4); color: var(--red); }
+    #pdf-upload { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
     @keyframes beat { 0%, 100% { transform: scale(1); } 20% { transform: scale(1.18); } 34% { transform: scale(1); } }
   </style>
 </head>
@@ -174,6 +189,11 @@ HTML_TEMPLATE = """
       <div class="msg bot">Hi! I can answer questions about heart health, risk factors, and your results. What would you like to know?</div>
     </div>
 
+    <div class="rag-upload">
+      <label for="pdf-upload">Add PDF knowledge source</label>
+      <input id="pdf-upload" type="file" accept="application/pdf,.pdf">
+    </div>
+
     <div class="chat-input-row">
       <textarea id="chat-input" rows="1" placeholder="Ask about cholesterol, BP, risk factors..."></textarea>
       <button id="chat-send" type="button" aria-label="Send">
@@ -195,6 +215,7 @@ HTML_TEMPLATE = """
     var chatWindow = document.getElementById("chat-window");
     var chatInput = document.getElementById("chat-input");
     var messages = document.getElementById("chat-messages");
+    var pdfUpload = document.getElementById("pdf-upload");
 
     document.getElementById("chat-toggle").addEventListener("click", function() {
       chatWindow.classList.toggle("open");
@@ -243,7 +264,35 @@ HTML_TEMPLATE = """
       messages.scrollTop = messages.scrollHeight;
     }
 
+    async function uploadPdf() {
+      var file = pdfUpload.files && pdfUpload.files[0];
+      if (!file) return;
+
+      var pending = document.createElement("div");
+      pending.className = "msg typing";
+      pending.textContent = "Adding PDF...";
+      messages.appendChild(pending);
+      messages.scrollTop = messages.scrollHeight;
+
+      var formData = new FormData();
+      formData.append("pdf", file);
+
+      try {
+        var res = await fetch("/upload-pdf", { method: "POST", body: formData });
+        var data = await res.json();
+        pending.className = "msg bot";
+        pending.textContent = data.reply || "PDF added.";
+      } catch {
+        pending.className = "msg bot";
+        pending.textContent = "Could not upload the PDF. Please try again.";
+      }
+
+      pdfUpload.value = "";
+      messages.scrollTop = messages.scrollHeight;
+    }
+
     document.getElementById("chat-send").addEventListener("click", sendMessage);
+    pdfUpload.addEventListener("change", uploadPdf);
     chatInput.addEventListener("keydown", function(event) {
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
@@ -320,19 +369,78 @@ def predict_probability(values):
     return prediction, probability
 
 
+def chunk_text(text):
+    words = re.findall(r"\S+", text)
+    if not words:
+        return []
+
+    step = max(1, CHUNK_WORDS - CHUNK_OVERLAP)
+    chunks = []
+    for start in range(0, len(words), step):
+        chunk = " ".join(words[start:start + CHUNK_WORDS]).strip()
+        if chunk:
+            chunks.append(chunk)
+        if start + CHUNK_WORDS >= len(words):
+            break
+    return chunks
+
+
+def extract_pdf_chunks(pdf_path):
+    if PdfReader is None:
+        raise RuntimeError("Install pypdf to use PDF RAG: pip install -r requirements.txt")
+
+    reader = PdfReader(str(pdf_path))
+    chunks = []
+    for page_number, page in enumerate(reader.pages, start=1):
+        text = page.extract_text() or ""
+        cleaned = re.sub(r"\s+", " ", text).strip()
+        for index, chunk in enumerate(chunk_text(cleaned), start=1):
+            chunks.append({
+                "text": chunk,
+                "source": f"{pdf_path.name}, page {page_number}, chunk {index}",
+            })
+    return chunks
+
+
+def load_pdf_documents():
+    PDF_DIR.mkdir(exist_ok=True)
+    loaded = []
+    for pdf_path in sorted(PDF_DIR.glob("*.pdf")):
+        try:
+            loaded.extend(extract_pdf_chunks(pdf_path))
+        except Exception:
+            continue
+    return loaded
+
+
+def refresh_pdf_documents():
+    global PDF_DOCUMENTS
+    PDF_DOCUMENTS = load_pdf_documents()
+    return PDF_DOCUMENTS
+
+
 def retrieve_documents(query, limit=3):
     words = set(re.findall(r"[a-z0-9]+", query.lower()))
     ranked = []
-    for document in DOCUMENTS:
-        doc_words = set(re.findall(r"[a-z0-9]+", document.lower()))
-        ranked.append((len(words & doc_words), document))
-    ranked.sort(reverse=True)
-    matches = [document for score, document in ranked if score > 0]
-    return (matches or DOCUMENTS[:limit])[:limit]
+    sources = [{"text": document, "source": "built-in"} for document in DOCUMENTS] + PDF_DOCUMENTS
+    for document in sources:
+        text = document["text"]
+        doc_words = set(re.findall(r"[a-z0-9]+", text.lower()))
+        ranked.append((len(words & doc_words), text, document["source"]))
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    matches = [
+        {"text": text, "source": source}
+        for score, text, source in ranked
+        if score > 0
+    ]
+    fallback = [{"text": document, "source": "built-in"} for document in DOCUMENTS[:limit]]
+    return (matches or fallback)[:limit]
 
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = MAX_PDF_BYTES
 model, scaler, model_mode = load_model()
+refresh_pdf_documents()
 
 
 @app.route("/")
@@ -401,12 +509,38 @@ def chat():
         return jsonify({"reply": "Please ask a heart-health question."})
 
     context = retrieve_documents(user_message)
-    bullets = "\n".join(f"- {item}" for item in context)
+    bullets = "\n".join(f"- {item['text']} ({item['source']})" for item in context)
     reply = (
         f"{bullets}\n"
         "- This is general education only. For symptoms, diagnosis, or treatment, talk with a qualified clinician."
     )
     return jsonify({"reply": reply})
+
+
+@app.route("/upload-pdf", methods=["POST"])
+def upload_pdf():
+    uploaded = request.files.get("pdf")
+    if uploaded is None or uploaded.filename == "":
+        return jsonify({"reply": "Please choose a PDF file first."}), 400
+
+    if not uploaded.filename.lower().endswith(".pdf"):
+        return jsonify({"reply": "Only PDF files can be added as RAG sources."}), 400
+
+    PDF_DIR.mkdir(exist_ok=True)
+    filename = secure_filename(uploaded.filename) or "knowledge.pdf"
+    pdf_path = PDF_DIR / filename
+    uploaded.save(pdf_path)
+
+    try:
+        chunks = extract_pdf_chunks(pdf_path)
+    except Exception as exc:
+        pdf_path.unlink(missing_ok=True)
+        return jsonify({"reply": f"Could not read this PDF: {exc}"}), 400
+
+    refresh_pdf_documents()
+    return jsonify({
+        "reply": f"Added {filename} as a RAG source with {len(chunks)} searchable chunks.",
+    })
 
 
 if __name__ == "__main__":

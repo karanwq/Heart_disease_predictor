@@ -136,6 +136,21 @@ The web app is built with **Flask** and features:
 
 ---
 
+## PDF RAG Chatbot
+
+The chatbot can answer questions from PDF documents that you add to the project.
+
+1. Put your PDF files inside the `rag_pdfs/` folder.
+2. Install dependencies with:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Start the Flask app. When the app starts, it reads PDFs from `rag_pdfs/`, extracts text, splits it into searchable chunks, and uses the best matches in chatbot replies.
+
+You can also open the chatbot in the web app and use **Add PDF knowledge source** to upload a PDF directly. Uploaded PDFs are saved in `rag_pdfs/`.
+
+---
+
 ## Render Deployment
 
 Deploy `app.py`, not `updated_health.py`.
