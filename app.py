@@ -9,11 +9,19 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
+try:
+    from pypdf import PdfReader
+except ImportError:
+    PdfReader = None
+
 
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = BASE_DIR / "health.pkl"
 SCALER_PATH = BASE_DIR / "scaler.pkl"
 DATA_PATH = BASE_DIR / "heart.csv"
+PDF_PATH = BASE_DIR / "rag_pdfs" / "who_ai.pdf"
+CHUNK_WORDS = 120
+CHUNK_OVERLAP = 30
 
 FEATURE_NAMES = [
     "age", "sex", "cp", "trestbps", "chol", "fbs", "restecg",
@@ -30,6 +38,7 @@ DOCUMENTS = [
     "Diabetes damages blood vessels and contributes to heart disease.",
     "Chest pain, exercise angina, and abnormal ECG findings can be warning signs that need medical review.",
 ]
+PDF_DOCUMENTS = []
 
 HTML_TEMPLATE = """
 <!doctype html>
@@ -320,19 +329,60 @@ def predict_probability(values):
     return prediction, probability
 
 
+def chunk_text(text):
+    words = re.findall(r"\S+", text)
+    if not words:
+        return []
+
+    step = max(1, CHUNK_WORDS - CHUNK_OVERLAP)
+    chunks = []
+    for start in range(0, len(words), step):
+        chunk = " ".join(words[start:start + CHUNK_WORDS]).strip()
+        if chunk:
+            chunks.append(chunk)
+        if start + CHUNK_WORDS >= len(words):
+            break
+    return chunks
+
+
+def load_pdf_documents():
+    if PdfReader is None or not PDF_PATH.exists():
+        return []
+
+    reader = PdfReader(str(PDF_PATH))
+    chunks = []
+    for page_number, page in enumerate(reader.pages, start=1):
+        text = page.extract_text() or ""
+        cleaned = re.sub(r"\s+", " ", text).strip()
+        for index, chunk in enumerate(chunk_text(cleaned), start=1):
+            chunks.append({
+                "text": chunk,
+                "source": f"{PDF_PATH.name}, page {page_number}, chunk {index}",
+            })
+    return chunks
+
+
 def retrieve_documents(query, limit=3):
     words = set(re.findall(r"[a-z0-9]+", query.lower()))
     ranked = []
-    for document in DOCUMENTS:
-        doc_words = set(re.findall(r"[a-z0-9]+", document.lower()))
-        ranked.append((len(words & doc_words), document))
-    ranked.sort(reverse=True)
-    matches = [document for score, document in ranked if score > 0]
-    return (matches or DOCUMENTS[:limit])[:limit]
+    sources = [{"text": document, "source": "built-in"} for document in DOCUMENTS] + PDF_DOCUMENTS
+    for document in sources:
+        text = document["text"]
+        doc_words = set(re.findall(r"[a-z0-9]+", text.lower()))
+        ranked.append((len(words & doc_words), text, document["source"]))
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    matches = [
+        {"text": text, "source": source}
+        for score, text, source in ranked
+        if score > 0
+    ]
+    fallback = [{"text": document, "source": "built-in"} for document in DOCUMENTS[:limit]]
+    return (matches or fallback)[:limit]
 
 
 app = Flask(__name__)
 model, scaler, model_mode = load_model()
+PDF_DOCUMENTS = load_pdf_documents()
 
 
 @app.route("/")
@@ -401,7 +451,7 @@ def chat():
         return jsonify({"reply": "Please ask a heart-health question."})
 
     context = retrieve_documents(user_message)
-    bullets = "\n".join(f"- {item}" for item in context)
+    bullets = "\n".join(f"- {item['text']} ({item['source']})" for item in context)
     reply = (
         f"{bullets}\n"
         "- This is general education only. For symptoms, diagnosis, or treatment, talk with a qualified clinician."
