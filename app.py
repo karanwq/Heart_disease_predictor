@@ -3,6 +3,7 @@ import pickle
 import re
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from flask import Flask, jsonify, redirect, render_template_string, request, url_for
 from sklearn.ensemble import RandomForestClassifier
@@ -14,14 +15,44 @@ try:
 except ImportError:
     PdfReader = None
 
+try:
+    import faiss
+    from sentence_transformers import SentenceTransformer
+except ImportError:
+    faiss = None
+    SentenceTransformer = None
+
+try:
+    from transformers import pipeline
+except ImportError:
+    pipeline = None
+
 
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = BASE_DIR / "health.pkl"
 SCALER_PATH = BASE_DIR / "scaler.pkl"
 DATA_PATH = BASE_DIR / "heart.csv"
-PDF_PATH = BASE_DIR / "rag_pdfs" / "who_ai.pdf"
+PDF_DIR = BASE_DIR / "rag_pdfs"
 CHUNK_WORDS = 120
 CHUNK_OVERLAP = 30
+SEMANTIC_MODEL_NAME = os.environ.get("SEMANTIC_MODEL_NAME", "all-MiniLM-L6-v2")
+GENERATOR_MODEL_NAME = os.environ.get("GENERATOR_MODEL_NAME", "google/flan-t5-large")
+ENABLE_GENERATOR = os.environ.get("ENABLE_GENERATOR", "0") == "1"
+STOP_WORDS = {
+    "a", "about", "above", "after", "again", "against", "all", "am", "an", "and",
+    "any", "are", "as", "at", "be", "because", "been", "before", "being", "below",
+    "between", "both", "but", "by", "can", "could", "did", "do", "does", "doing",
+    "down", "during", "each", "few", "for", "from", "further", "had", "has", "have",
+    "having", "he", "her", "here", "hers", "herself", "him", "himself", "his", "how",
+    "i", "if", "in", "into", "is", "it", "its", "itself", "just", "me", "more",
+    "most", "my", "myself", "no", "nor", "not", "now", "of", "off", "on", "once",
+    "only", "or", "other", "our", "ours", "ourselves", "out", "over", "own", "same",
+    "she", "should", "so", "some", "such", "than", "that", "the", "their", "theirs",
+    "them", "themselves", "then", "there", "these", "they", "this", "those", "through",
+    "to", "too", "under", "until", "up", "very", "was", "we", "were", "what", "when",
+    "where", "which", "while", "who", "whom", "why", "will", "with", "you", "your",
+    "yours", "yourself", "yourselves",
+}
 
 FEATURE_NAMES = [
     "age", "sex", "cp", "trestbps", "chol", "fbs", "restecg",
@@ -345,44 +376,148 @@ def chunk_text(text):
     return chunks
 
 
+def tokenize(text):
+    return [
+        word
+        for word in re.findall(r"[a-z0-9]+", text.lower())
+        if len(word) > 2 and word not in STOP_WORDS
+    ]
+
+
 def load_pdf_documents():
-    if PdfReader is None or not PDF_PATH.exists():
+    if PdfReader is None or not PDF_DIR.exists():
         return []
 
-    reader = PdfReader(str(PDF_PATH))
     chunks = []
-    for page_number, page in enumerate(reader.pages, start=1):
-        text = page.extract_text() or ""
-        cleaned = re.sub(r"\s+", " ", text).strip()
-        for index, chunk in enumerate(chunk_text(cleaned), start=1):
-            chunks.append({
-                "text": chunk,
-                "source": f"{PDF_PATH.name}, page {page_number}, chunk {index}",
-            })
+    for pdf_path in sorted(PDF_DIR.glob("*.pdf")):
+        try:
+            reader = PdfReader(str(pdf_path))
+        except Exception:
+            continue
+
+        for page_number, page in enumerate(reader.pages, start=1):
+            text = page.extract_text() or ""
+            cleaned = re.sub(r"\s+", " ", text).strip()
+            for index, chunk in enumerate(chunk_text(cleaned), start=1):
+                chunks.append({
+                    "text": chunk,
+                    "source": f"{pdf_path.name}, page {page_number}, chunk {index}",
+                    "tokens": tokenize(chunk),
+                })
     return chunks
 
 
-def retrieve_documents(query, limit=3):
-    words = set(re.findall(r"[a-z0-9]+", query.lower()))
+def build_semantic_retriever(documents):
+    if not documents or faiss is None or SentenceTransformer is None:
+        return None, None
+
+    try:
+        embed_model = SentenceTransformer(SEMANTIC_MODEL_NAME)
+        texts = [document["text"] for document in documents]
+        embeddings = embed_model.encode(texts, convert_to_numpy=True)
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        embeddings = embeddings / np.maximum(norms, 1e-12)
+        index = faiss.IndexFlatIP(embeddings.shape[1])
+        index.add(embeddings.astype("float32"))
+        return embed_model, index
+    except Exception:
+        return None, None
+
+
+def load_generator():
+    if not ENABLE_GENERATOR or pipeline is None:
+        return None
+
+    try:
+        return pipeline("text2text-generation", model=GENERATOR_MODEL_NAME)
+    except Exception:
+        return None
+
+
+def retrieve_documents(query, limit=3, use_built_in=True):
+    if SEMANTIC_MODEL is not None and SEMANTIC_INDEX is not None and PDF_DOCUMENTS:
+        try:
+            query_embedding = SEMANTIC_MODEL.encode([query], convert_to_numpy=True)
+            query_embedding = query_embedding / np.maximum(
+                np.linalg.norm(query_embedding, axis=1, keepdims=True),
+                1e-12,
+            )
+            _, indexes = SEMANTIC_INDEX.search(query_embedding.astype("float32"), limit)
+            return [
+                {
+                    "text": PDF_DOCUMENTS[index]["text"],
+                    "source": PDF_DOCUMENTS[index]["source"],
+                }
+                for index in indexes[0]
+                if 0 <= index < len(PDF_DOCUMENTS)
+            ]
+        except Exception:
+            pass
+
+    words = set(tokenize(query))
+    if not words:
+        return []
+
     ranked = []
-    sources = [{"text": document, "source": "built-in"} for document in DOCUMENTS] + PDF_DOCUMENTS
+    sources = list(PDF_DOCUMENTS)
+    if use_built_in:
+        sources += [
+            {"text": document, "source": "built-in", "tokens": tokenize(document)}
+            for document in DOCUMENTS
+        ]
+
     for document in sources:
-        text = document["text"]
-        doc_words = set(re.findall(r"[a-z0-9]+", text.lower()))
-        ranked.append((len(words & doc_words), text, document["source"]))
+        doc_words = set(document.get("tokens") or tokenize(document["text"]))
+        overlap = words & doc_words
+        score = len(overlap)
+        if score:
+            ranked.append((score, document["text"], document["source"]))
+
     ranked.sort(key=lambda item: item[0], reverse=True)
-    matches = [
+    return [
         {"text": text, "source": source}
         for score, text, source in ranked
-        if score > 0
-    ]
-    fallback = [{"text": document, "source": "built-in"} for document in DOCUMENTS[:limit]]
-    return (matches or fallback)[:limit]
+    ][:limit]
+
+
+def generate_pdf_reply(user_message, context):
+    context_text = "\n".join(item["text"] for item in context)
+
+    if GENERATOR is not None:
+        prompt = f"""
+You are a helpful medical assistant.
+
+Context:
+{context_text}
+
+Question: {user_message}
+
+Give 4 bullet points explaining causes, risks, and advice.
+"""
+        try:
+            output = GENERATOR(prompt, max_new_tokens=150, temperature=0.7)
+            reply = output[0].get("generated_text", "").strip()
+            if "Answer:" in reply:
+                reply = reply.split("Answer:")[-1].strip()
+            if reply:
+                return reply
+        except Exception:
+            pass
+
+    bullets = []
+    for item in context[:4]:
+        sentence = re.split(r"(?<=[.!?])\s+", item["text"].strip())[0]
+        bullets.append(f"- {sentence} ({item['source']})")
+
+    bullets.append("- This is general education only. For symptoms, diagnosis, or treatment, talk with a qualified clinician.")
+    return "\n".join(bullets)
 
 
 app = Flask(__name__)
 model, scaler, model_mode = load_model()
 PDF_DOCUMENTS = load_pdf_documents()
+SEMANTIC_MODEL, SEMANTIC_INDEX = build_semantic_retriever(PDF_DOCUMENTS)
+GENERATOR = load_generator()
 
 
 @app.route("/")
@@ -445,18 +580,47 @@ def predict():
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    payload = request.get_json(silent=True) or {}
-    user_message = payload.get("message", "").strip()
-    if not user_message:
-        return jsonify({"reply": "Please ask a heart-health question."})
+    try:
+        payload = request.get_json(silent=True) or {}
+        user_message = payload.get("message", "").strip()
+        if not user_message:
+            return jsonify({"reply": "Please ask something"})
 
-    context = retrieve_documents(user_message)
-    bullets = "\n".join(f"- {item['text']} ({item['source']})" for item in context)
-    reply = (
-        f"{bullets}\n"
-        "- This is general education only. For symptoms, diagnosis, or treatment, talk with a qualified clinician."
-    )
-    return jsonify({"reply": reply})
+        user_message_lower = user_message.lower()
+
+        if any(word in user_message_lower for word in ["hello", "hi", "hey"]):
+            return jsonify({"reply": "Hey! I can help you with heart health questions."})
+
+        if "thank" in user_message_lower:
+            return jsonify({"reply": "You're welcome"})
+
+        if any(word in user_message_lower for word in ["bye", "goodbye"]):
+            return jsonify({"reply": "Take care! Stay healthy"})
+
+        if "who are you" in user_message_lower:
+            return jsonify({"reply": "I'm your AI health assistant."})
+
+        context = retrieve_documents(
+            f"heart disease explanation about {user_message}",
+            limit=6,
+            use_built_in=not PDF_DOCUMENTS,
+        )
+        if not context:
+            if PDF_DOCUMENTS:
+                return jsonify({
+                    "reply": (
+                        "I could not find that answer in the PDF knowledge source. "
+                        "Try asking with keywords from the document, or add a PDF that covers this topic."
+                    )
+                })
+
+            return jsonify({
+                "reply": "No PDF knowledge source is loaded. Add a PDF to the rag_pdfs folder and restart the app."
+            })
+
+        return jsonify({"reply": generate_pdf_reply(user_message, context)})
+    except Exception:
+        return jsonify({"reply": "Something went wrong"})
 
 
 if __name__ == "__main__":
