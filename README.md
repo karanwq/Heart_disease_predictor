@@ -159,6 +159,16 @@ Deploy `app.py`, not `updated_health.py`.
 - Start command: `gunicorn app:app`
 - Python version: `3.11.9`
 
+Set these environment variables in Render under **Environment**:
+
+```text
+GROQ_API_KEY=your_groq_api_key
+GROQ_MODEL_NAME=llama-3.1-8b-instant
+ENABLE_GENERATOR=0
+```
+
+`GROQ_API_KEY` must be stored as a Render secret. Do not hardcode it in `app.py`, `health_with_ai_chatbot.ipynb`, or Git. The deployed chatbot uses Groq only after it retrieves matching health/PDF context, and the prompt tells the model to answer from that context instead of inventing unsupported medical details.
+
 For real predictions, commit either `health.pkl` and `scaler.pkl`, or commit `heart.csv` so the app can train the model on startup. Without those files, the app will show an error instead of returning demo predictions.
 
 ---

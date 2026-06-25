@@ -27,6 +27,11 @@ try:
 except ImportError:
     pipeline = None
 
+try:
+    from groq import Groq
+except ImportError:
+    Groq = None
+
 
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = BASE_DIR / "health.pkl"
@@ -38,6 +43,8 @@ CHUNK_OVERLAP = 30
 SEMANTIC_MODEL_NAME = os.environ.get("SEMANTIC_MODEL_NAME", "all-MiniLM-L6-v2")
 GENERATOR_MODEL_NAME = os.environ.get("GENERATOR_MODEL_NAME", "google/flan-t5-large")
 ENABLE_GENERATOR = os.environ.get("ENABLE_GENERATOR", "0") == "1"
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
+GROQ_MODEL_NAME = os.environ.get("GROQ_MODEL_NAME", "llama-3.1-8b-instant")
 STOP_WORDS = {
     "a", "about", "above", "after", "again", "against", "all", "am", "an", "and",
     "any", "are", "as", "at", "be", "because", "been", "before", "being", "below",
@@ -434,6 +441,16 @@ def load_generator():
         return None
 
 
+def load_groq_client():
+    if not GROQ_API_KEY or Groq is None:
+        return None
+
+    try:
+        return Groq(api_key=GROQ_API_KEY)
+    except Exception:
+        return None
+
+
 def retrieve_documents(query, limit=3, use_built_in=True):
     if SEMANTIC_MODEL is not None and SEMANTIC_INDEX is not None and PDF_DOCUMENTS:
         try:
@@ -481,7 +498,43 @@ def retrieve_documents(query, limit=3, use_built_in=True):
 
 
 def generate_pdf_reply(user_message, context):
-    context_text = "\n".join(item["text"] for item in context)
+    context_text = "\n".join(
+        f"[{index}] Source: {item['source']}\n{item['text']}"
+        for index, item in enumerate(context, start=1)
+    )
+
+    if GROQ_CLIENT is not None:
+        try:
+            response = GROQ_CLIENT.chat.completions.create(
+                model=GROQ_MODEL_NAME,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a helpful heart-health education assistant. "
+                            "Answer only from the provided context. Do not use outside medical knowledge, "
+                            "do not invent facts, and do not diagnose or prescribe treatment. If the context "
+                            "does not contain the answer, say: I could not find that in the provided health "
+                            "knowledge source. Keep the answer concise and include source numbers when useful."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Context:\n{context_text}\n\n"
+                            f"Question: {user_message}\n\n"
+                            "Answer in up to 4 short bullet points using only the context above."
+                        ),
+                    },
+                ],
+                temperature=0.1,
+                max_tokens=350,
+            )
+            reply = response.choices[0].message.content.strip()
+            if reply:
+                return reply
+        except Exception:
+            pass
 
     if GENERATOR is not None:
         prompt = f"""
@@ -517,6 +570,7 @@ app = Flask(__name__)
 model, scaler, model_mode = load_model()
 PDF_DOCUMENTS = load_pdf_documents()
 SEMANTIC_MODEL, SEMANTIC_INDEX = build_semantic_retriever(PDF_DOCUMENTS)
+GROQ_CLIENT = load_groq_client()
 GENERATOR = load_generator()
 
 
