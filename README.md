@@ -156,7 +156,7 @@ You can also open the chatbot in the web app and use **Add PDF knowledge source*
 Deploy `app.py`, not `updated_health.py`.
 
 - Build command: `pip install -r requirements.txt`
-- Start command: `gunicorn app:app`
+- Start command: `gunicorn --bind 0.0.0.0:$PORT app:app`
 - Python version: `3.11.9`
 
 Set these environment variables in Render under **Environment**:
