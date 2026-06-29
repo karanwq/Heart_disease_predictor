@@ -15,12 +15,9 @@ try:
 except ImportError:
     PdfReader = None
 
-try:
-    import faiss
-    from sentence_transformers import SentenceTransformer
-except ImportError:
-    faiss = None
-    SentenceTransformer = None
+# sentence-transformers and faiss removed to stay within Render free-tier memory limit
+faiss = None
+SentenceTransformer = None
 
 try:
     from groq import Groq
@@ -170,17 +167,8 @@ def load_pdf_documents():
     return chunks
 
 def build_semantic_retriever(documents):
-    if not documents or faiss is None or SentenceTransformer is None: return None, None
-    try:
-        model = SentenceTransformer(SEMANTIC_MODEL_NAME)
-        texts = [d["text"] for d in documents]
-        emb = model.encode(texts, convert_to_numpy=True)
-        emb /= np.maximum(np.linalg.norm(emb, axis=1, keepdims=True), 1e-12)
-        idx = faiss.IndexFlatIP(emb.shape[1])
-        idx.add(emb.astype("float32"))
-        return model, idx
-    except Exception:
-        return None, None
+    # Disabled: sentence-transformers exceeds Render free-tier memory
+    return None, None
 
 def retrieve(query, k=5):
     """Semantic retrieval with keyword fallback."""
