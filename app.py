@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from flask import Flask, jsonify, redirect, render_template_string, request, url_for
+from flask import Flask, jsonify, redirect, render_template, request, url_for
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
@@ -493,8 +493,8 @@ GROQ_CLIENT = load_groq_client()
 
 @app.route("/")
 def home():
-    return render_template_string(HTML_TEMPLATE, fields=FIELDS, values={},
-                                  prediction_text=None, risk=None, insight=None, error=None)
+    return render_template("index.html", prediction_text=None, risk=0,
+                           insight=None, error=None, model_auc=None)
 
 
 @app.route("/predict", methods=["GET", "POST"])
@@ -506,14 +506,15 @@ def predict():
     user_input, errors = parse_and_validate(form)
 
     if errors:
-        return render_template_string(HTML_TEMPLATE, fields=FIELDS, values=form,
-                                      prediction_text=None, risk=None, insight=None,
-                                      error="Input error: " + " | ".join(errors)), 400
+        return render_template("index.html", prediction_text=None, risk=0,
+                               insight=None,
+                               error="Input error: " + " | ".join(errors),
+                               model_auc=None), 400
 
     if model is None or scaler is None:
-        return render_template_string(HTML_TEMPLATE, fields=FIELDS, values=form,
-                                      prediction_text=None, risk=None, insight=None,
-                                      error=model_mode), 503
+        return render_template("index.html", prediction_text=None, risk=0,
+                               insight=None, error=model_mode,
+                               model_auc=None), 503
 
     scaled = scaler.transform([user_input])
     pred   = int(model.predict(scaled)[0])
@@ -538,9 +539,8 @@ def predict():
     except Exception as exc:
         insight = f"(AI insight unavailable: {exc})"
 
-    return render_template_string(HTML_TEMPLATE, fields=FIELDS, values=form,
-                                  prediction_text=result, risk=prob,
-                                  insight=insight, error=None)
+    return render_template("index.html", prediction_text=result, risk=prob,
+                           insight=insight, error=None, model_auc=None)
 
 
 @app.route("/chat", methods=["POST"])
