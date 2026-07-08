@@ -37,6 +37,7 @@ CHUNK_OVERLAP       = 30
 SEMANTIC_MODEL_NAME = os.environ.get("SEMANTIC_MODEL_NAME", "all-MiniLM-L6-v2")
 GROQ_API_KEY        = os.environ.get("GROQ_API_KEY", "").strip()
 GROQ_MODEL_NAME     = os.environ.get("GROQ_MODEL_NAME", "llama-3.3-70b-versatile")
+MODEL_AUC           = os.environ.get("MODEL_AUC", "").strip() or None
 
 FEATURE_NAMES = [
     "age", "sex", "cp", "trestbps", "chol", "fbs", "restecg",
@@ -494,7 +495,7 @@ GROQ_CLIENT = load_groq_client()
 @app.route("/")
 def home():
     return render_template("index.html", prediction_text=None, risk=0,
-                           insight=None, error=None, model_auc=None)
+                           insight=None, error=None, model_auc=MODEL_AUC)
 
 
 @app.route("/predict", methods=["GET", "POST"])
@@ -509,12 +510,12 @@ def predict():
         return render_template("index.html", prediction_text=None, risk=0,
                                insight=None,
                                error="Input error: " + " | ".join(errors),
-                               model_auc=None), 400
+                               model_auc=MODEL_AUC), 400
 
     if model is None or scaler is None:
         return render_template("index.html", prediction_text=None, risk=0,
                                insight=None, error=model_mode,
-                               model_auc=None), 503
+                               model_auc=MODEL_AUC), 503
 
     scaled = scaler.transform([user_input])
     pred   = int(model.predict(scaled)[0])
@@ -540,7 +541,7 @@ def predict():
         insight = f"(AI insight unavailable: {exc})"
 
     return render_template("index.html", prediction_text=result, risk=prob,
-                           insight=insight, error=None, model_auc=None)
+                           insight=insight, error=None, model_auc=MODEL_AUC)
 
 
 @app.route("/chat", methods=["POST"])
