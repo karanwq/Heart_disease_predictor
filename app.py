@@ -41,7 +41,6 @@ SEMANTIC_MODEL_NAME = os.environ.get("SEMANTIC_MODEL_NAME", "all-MiniLM-L6-v2")
 GROQ_API_KEY        = os.environ.get("GROQ_API_KEY", "").strip()
 GROQ_MODEL_NAME     = os.environ.get("GROQ_MODEL_NAME", "llama-3.3-70b-versatile")
 MODEL_AUC           = os.environ.get("MODEL_AUC", "").strip() or None
-GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "").strip()
 
 FEATURE_NAMES = [
     "age", "sex", "cp", "trestbps", "chol", "fbs", "restecg",
@@ -572,7 +571,7 @@ def chat():
 
 @app.route("/nearby_care", methods=["POST"])
 def nearby_care():
-    """Return nearby hospitals/clinics without exposing the Maps API key to browsers."""
+    """Return nearby healthcare facilities from OpenStreetMap's public data."""
     payload = request.get_json(silent=True) or {}
     try:
         lat = float(payload.get("lat"))
@@ -582,19 +581,23 @@ def nearby_care():
 
     if not (-90 <= lat <= 90 and -180 <= lng <= 180):
         return jsonify(error="The supplied location is outside the valid range."), 400
-    if not GOOGLE_MAPS_API_KEY:
-        return jsonify(error="Nearby care search is not configured. Add GOOGLE_MAPS_API_KEY to the server environment."), 503
-
     query_hint = str(payload.get("query", "")).lower()
-    keyword = "doctor" if any(word in query_hint for word in ("doctor", "clinic", "physician")) else "hospital"
-    params = urlencode({
-        "location": f"{lat},{lng}",
-        "radius": 10000,
-        "type": "hospital",
-        "keyword": keyword,
-        "key": GOOGLE_MAPS_API_KEY,
-    })
-    endpoint = f"https://maps.googleapis.com/maps/api/place/nearbysearch/json?{params}"
+    if any(word in query_hint for word in ("hospital", "emergency", "urgent care")):
+        amenity = "hospital"
+    elif any(word in query_hint for word in ("pharmacy", "chemist", "medicine", "drug store")):
+        amenity = "pharmacy"
+    elif "clinic" in query_hint:
+        amenity = "clinic"
+    else:
+        amenity = "doctors"
+
+    overpass_query = f'''[out:json][timeout:25];
+(
+  node["amenity"="{amenity}"](around:5000,{lat},{lng});
+  way["amenity"="{amenity}"](around:5000,{lat},{lng});
+);
+out center 12;'''
+    endpoint = "https://overpass-api.de/api/interpreter?" + urlencode({"data": overpass_query})
 
     try:
         with urlopen(endpoint, timeout=8) as response:
@@ -603,30 +606,31 @@ def nearby_care():
     except (HTTPError, URLError, TimeoutError, ValueError):
         return jsonify(error="Nearby care search is temporarily unavailable. Please try again."), 502
 
-    status = data.get("status")
-    if status not in {"OK", "ZERO_RESULTS"}:
-        return jsonify(error="Nearby care search could not be completed. Please try again."), 502
-
     results = []
-    for place in data.get("results", [])[:8]:
-        location = place.get("geometry", {}).get("location", {})
-        place_id = place.get("place_id", "")
-        maps_url = (
-            "https://www.google.com/maps/search/?api=1&query_place_id="
-            + place_id
-            + "&query="
-            + urlencode({"q": place.get("name", "healthcare")})[2:]
-        )
+    for place in data.get("elements", []):
+        tags = place.get("tags", {})
+        name = tags.get("name")
+        if not name:
+            continue
+        location = place if place.get("type") == "node" else place.get("center", {})
+        place_lat, place_lng = location.get("lat"), location.get("lon")
+        if place_lat is None or place_lng is None:
+            continue
+        address = " ".join(filter(None, [
+            tags.get("addr:housenumber"), tags.get("addr:street"),
+            tags.get("addr:city") or tags.get("addr:suburb"),
+        ])) or tags.get("addr:full", "")
         results.append({
-            "name": place.get("name", "Healthcare provider"),
-            "address": place.get("vicinity", ""),
-            "rating": place.get("rating"),
-            "user_ratings_total": place.get("user_ratings_total"),
-            "open_now": place.get("opening_hours", {}).get("open_now"),
-            "lat": location.get("lat"),
-            "lng": location.get("lng"),
-            "maps_url": maps_url,
+            "name": name,
+            "address": address,
+            "opening_hours": tags.get("opening_hours"),
+            "phone": tags.get("phone") or tags.get("contact:phone"),
+            "lat": place_lat,
+            "lng": place_lng,
+            "maps_url": f"https://www.google.com/maps/search/?api=1&query={place_lat},{place_lng}",
         })
+        if len(results) == 8:
+            break
     return jsonify(results=results)
 
 

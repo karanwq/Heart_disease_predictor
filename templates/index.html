@@ -299,6 +299,16 @@
     msgs.scrollTop = msgs.scrollHeight;
   }
 
+  function buildNearbyMeta(place) {
+    var meta = [];
+    if (place.rating) meta.push('\u2605 ' + place.rating + (place.user_ratings_total ? ' (' + place.user_ratings_total + ')' : ''));
+    if (place.open_now === true) meta.push('Open now');
+    else if (place.open_now === false) meta.push('Closed now');
+    else if (place.opening_hours) meta.push(place.opening_hours);
+    if (place.phone) meta.push(place.phone);
+    return meta;
+  }
+
   function renderNearbyResults(msgs, data) {
     if (data.error) { appendBotMsg(msgs, data.error); return; }
     var results = data.results || [];
@@ -310,10 +320,7 @@
     wrap.className = 'msg bot nearby-list';
     var html = '<strong style="display:block;">Nearby care options:</strong>';
     results.forEach(function (p) {
-      var meta = [];
-      if (p.rating) meta.push('\u2605 ' + p.rating + (p.user_ratings_total ? ' (' + p.user_ratings_total + ')' : ''));
-      if (p.open_now === true) meta.push('Open now');
-      else if (p.open_now === false) meta.push('Closed now');
+      var meta = buildNearbyMeta(p);
       html += '<div class="nearby-card">' +
         '<div class="nearby-name"></div>' +
         (p.address ? '<div class="nearby-addr"></div>' : '') +
@@ -331,11 +338,7 @@
       if (addrEl) addrEl.textContent = p.address || '';
       var metaEl = card.querySelector('.nearby-meta');
       if (metaEl) {
-        var meta = [];
-        if (p.rating) meta.push('\u2605 ' + p.rating + (p.user_ratings_total ? ' (' + p.user_ratings_total + ')' : ''));
-        if (p.open_now === true) meta.push('Open now');
-        else if (p.open_now === false) meta.push('Closed now');
-        metaEl.textContent = meta.join(' \u00b7 ');
+        metaEl.textContent = buildNearbyMeta(p).join(' \u00b7 ');
       }
       var link = card.querySelector('.nearby-link');
       link.href = p.maps_url || ('https://www.google.com/maps/search/?api=1&query=' + p.lat + ',' + p.lng);

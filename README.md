@@ -165,12 +165,11 @@ Set these environment variables in Render under **Environment**:
 GROQ_API_KEY=your_groq_api_key
 GROQ_MODEL_NAME=llama-3.1-8b-instant
 ENABLE_GENERATOR=0
-GOOGLE_MAPS_API_KEY=your_google_maps_api_key
 ```
 
 `GROQ_API_KEY` must be stored as a Render secret. Do not hardcode it in `app.py`, `health_with_ai_chatbot.ipynb`, or Git. The deployed chatbot uses Groq only after it retrieves matching health/PDF context, and the prompt tells the model to answer from that context instead of inventing unsupported medical details.
 
-The **Find care near me** chat action uses the browser's location permission and the Google Places Nearby Search API. Enable that API for the Google Cloud project behind `GOOGLE_MAPS_API_KEY`, restrict the key to the deployment as appropriate, and keep the key server-side (never in the HTML or client JavaScript).
+The **Find care near me** chat action uses the browser's location permission and OpenStreetMap's free Overpass API; no API key or billing account is required.
 
 For real predictions, commit either `health.pkl` and `scaler.pkl`, or commit `heart.csv` so the app can train the model on startup. Without those files, the app will show an error instead of returning demo predictions.
 
