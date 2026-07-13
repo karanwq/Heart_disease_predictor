@@ -2,6 +2,9 @@ import os
 import pickle
 import re
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import urlopen
 
 import numpy as np
 import pandas as pd
@@ -38,6 +41,7 @@ SEMANTIC_MODEL_NAME = os.environ.get("SEMANTIC_MODEL_NAME", "all-MiniLM-L6-v2")
 GROQ_API_KEY        = os.environ.get("GROQ_API_KEY", "").strip()
 GROQ_MODEL_NAME     = os.environ.get("GROQ_MODEL_NAME", "llama-3.3-70b-versatile")
 MODEL_AUC           = os.environ.get("MODEL_AUC", "").strip() or None
+GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "").strip()
 
 FEATURE_NAMES = [
     "age", "sex", "cp", "trestbps", "chol", "fbs", "restecg",
@@ -564,6 +568,66 @@ def chat():
         return jsonify(reply=reply)
     except Exception:
         return jsonify(reply="Something went wrong — please try again.")
+
+
+@app.route("/nearby_care", methods=["POST"])
+def nearby_care():
+    """Return nearby hospitals/clinics without exposing the Maps API key to browsers."""
+    payload = request.get_json(silent=True) or {}
+    try:
+        lat = float(payload.get("lat"))
+        lng = float(payload.get("lng"))
+    except (TypeError, ValueError):
+        return jsonify(error="A valid location is required to find nearby care."), 400
+
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        return jsonify(error="The supplied location is outside the valid range."), 400
+    if not GOOGLE_MAPS_API_KEY:
+        return jsonify(error="Nearby care search is not configured. Add GOOGLE_MAPS_API_KEY to the server environment."), 503
+
+    query_hint = str(payload.get("query", "")).lower()
+    keyword = "doctor" if any(word in query_hint for word in ("doctor", "clinic", "physician")) else "hospital"
+    params = urlencode({
+        "location": f"{lat},{lng}",
+        "radius": 10000,
+        "type": "hospital",
+        "keyword": keyword,
+        "key": GOOGLE_MAPS_API_KEY,
+    })
+    endpoint = f"https://maps.googleapis.com/maps/api/place/nearbysearch/json?{params}"
+
+    try:
+        with urlopen(endpoint, timeout=8) as response:
+            import json
+            data = json.load(response)
+    except (HTTPError, URLError, TimeoutError, ValueError):
+        return jsonify(error="Nearby care search is temporarily unavailable. Please try again."), 502
+
+    status = data.get("status")
+    if status not in {"OK", "ZERO_RESULTS"}:
+        return jsonify(error="Nearby care search could not be completed. Please try again."), 502
+
+    results = []
+    for place in data.get("results", [])[:8]:
+        location = place.get("geometry", {}).get("location", {})
+        place_id = place.get("place_id", "")
+        maps_url = (
+            "https://www.google.com/maps/search/?api=1&query_place_id="
+            + place_id
+            + "&query="
+            + urlencode({"q": place.get("name", "healthcare")})[2:]
+        )
+        results.append({
+            "name": place.get("name", "Healthcare provider"),
+            "address": place.get("vicinity", ""),
+            "rating": place.get("rating"),
+            "user_ratings_total": place.get("user_ratings_total"),
+            "open_now": place.get("opening_hours", {}).get("open_now"),
+            "lat": location.get("lat"),
+            "lng": location.get("lng"),
+            "maps_url": maps_url,
+        })
+    return jsonify(results=results)
 
 
 if __name__ == "__main__":
