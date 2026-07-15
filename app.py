@@ -18,7 +18,6 @@ try:
 except ImportError:
     PdfReader = None
 
-# sentence-transformers and faiss removed to stay within Render free-tier memory limit
 faiss = None
 SentenceTransformer = None
 
@@ -27,14 +26,12 @@ try:
 except ImportError:
     Groq = None
 
-# ── Paths ──────────────────────────────────────────────────────────────────────
 BASE_DIR    = Path(__file__).resolve().parent
 MODEL_PATH  = BASE_DIR / "health.pkl"
 SCALER_PATH = BASE_DIR / "scaler.pkl"
 DATA_PATH   = BASE_DIR / "heart.csv"
 PDF_DIR     = BASE_DIR / "rag_pdfs"
 
-# ── Config ─────────────────────────────────────────────────────────────────────
 CHUNK_WORDS         = 120
 CHUNK_OVERLAP       = 30
 SEMANTIC_MODEL_NAME = os.environ.get("SEMANTIC_MODEL_NAME", "all-MiniLM-L6-v2")
@@ -91,7 +88,6 @@ Rules:
 - Use plain English; avoid jargon unless the user clearly prefers clinical terms.
 """
 
-# Fallback knowledge when no PDFs are loaded
 BUILTIN_DOCS = [
     "High blood pressure can occur due to stress, high salt intake, lack of exercise, or obesity.",
     "Cholesterol buildup in arteries reduces blood flow and increases heart disease risk.",
@@ -120,7 +116,6 @@ STOP_WORDS = {
     "whom","why","will","with","you","your","yours","yourself","yourselves",
 }
 
-# ── Model loading ──────────────────────────────────────────────────────────────
 def train_and_save_model():
     df = pd.read_csv(DATA_PATH)
     X, y = df[FEATURE_NAMES], df["target"]
@@ -128,7 +123,6 @@ def train_and_save_model():
     X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2, random_state=42, stratify=stratify)
     sc = StandardScaler()
     X_train_s = sc.fit_transform(X_train)
-    # Matches notebook: 200 estimators, min_samples_leaf=2
     rf = RandomForestClassifier(n_estimators=200, min_samples_leaf=2, random_state=42, n_jobs=-1)
     rf.fit(X_train_s, y_train)
     with MODEL_PATH.open("wb") as f: pickle.dump(rf, f)
@@ -144,7 +138,6 @@ def load_model():
         return train_and_save_model()
     return None, None, "Missing model files. Add health.pkl + scaler.pkl, or heart.csv to train on startup."
 
-# ── PDF / RAG ──────────────────────────────────────────────────────────────────
 def chunk_text(text):
     words = re.findall(r"\S+", text)
     if not words: return []
@@ -171,11 +164,9 @@ def load_pdf_documents():
     return chunks
 
 def build_semantic_retriever(documents):
-    # Disabled: sentence-transformers exceeds Render free-tier memory
     return None, None
 
 def retrieve(query, k=5):
-    """Semantic retrieval with keyword fallback."""
     if SEMANTIC_MODEL is not None and SEMANTIC_INDEX is not None and PDF_DOCUMENTS:
         try:
             q = SEMANTIC_MODEL.encode([query], convert_to_numpy=True)
@@ -185,7 +176,6 @@ def retrieve(query, k=5):
         except Exception:
             pass
 
-    # Keyword fallback over PDFs + built-ins
     words = set(tokenize(query))
     sources = list(PDF_DOCUMENTS) + [{"text": d, "source": "built-in", "tokens": tokenize(d)} for d in BUILTIN_DOCS]
     ranked = sorted(
@@ -194,7 +184,6 @@ def retrieve(query, k=5):
     )
     return [text for _, text in ranked[:k]] or BUILTIN_DOCS[:k]
 
-# ── Groq LLM ───────────────────────────────────────────────────────────────────
 def load_groq_client():
     if not GROQ_API_KEY or Groq is None: return None
     try: return Groq(api_key=GROQ_API_KEY)
@@ -212,7 +201,7 @@ def ask_llm(user_message, history=None, rag_context="", prediction_context=""):
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     if history:
-        messages += history[-20:]   # keep last 20 turns max
+        messages += history[-20:]
     messages.append({"role": "user", "content": enriched})
 
     response = GROQ_CLIENT.chat.completions.create(
@@ -223,7 +212,6 @@ def ask_llm(user_message, history=None, rag_context="", prediction_context=""):
     )
     return response.choices[0].message.content.strip()
 
-# ── Input validation ───────────────────────────────────────────────────────────
 def parse_and_validate(form_data):
     values, errors = [], []
     for col in FEATURE_NAMES:
@@ -249,7 +237,6 @@ def feature_summary(values):
     }
     return ", ".join(f"{labels[k]}={v}" for k, v in zip(FEATURE_NAMES, values))
 
-# ── HTML Template ──────────────────────────────────────────────────────────────
 HTML_TEMPLATE = """
 <!doctype html>
 <html lang="en">
@@ -486,7 +473,6 @@ input:focus{border-color:rgba(226,75,74,.5);background:#fff}
 </html>
 """
 
-# ── Flask app ──────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 
 model, scaler, model_mode = load_model()
@@ -525,7 +511,6 @@ def predict():
     prob   = round(float(model.predict_proba(scaled)[0][1]) * 100, 1)
     result = "Heart Disease Detected" if pred == 1 else "No Heart Disease Detected"
 
-    # AI insight (matches notebook behaviour)
     feat_str = feature_summary(user_input)
     pred_ctx = f"Prediction: {result} | Risk score: {prob}% | Patient data: {feat_str}"
     rag_ctx  = "\n".join(retrieve("heart disease risk factors causes", k=4))
@@ -552,7 +537,7 @@ def chat():
     try:
         payload  = request.get_json(silent=True) or {}
         user_msg = payload.get("message", "").strip()
-        history  = payload.get("history", [])   # browser sends full history
+        history  = payload.get("history", [])
 
         if not user_msg:
             return jsonify(reply="Please ask something.")
@@ -571,7 +556,6 @@ def chat():
 
 @app.route("/nearby_care", methods=["POST"])
 def nearby_care():
-    """Return nearby healthcare facilities from OpenStreetMap's public data."""
     payload = request.get_json(silent=True) or {}
     try:
         lat = float(payload.get("lat"))
