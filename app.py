@@ -43,7 +43,12 @@ LOCATIONIQ_API_KEY  = os.environ.get("LOCATIONIQ_API_KEY", "").strip()
 LOCATIONIQ_SEARCH_URL = "https://us1.locationiq.com/v1/search"
 LOCATIONIQ_NEARBY_URL = "https://us1.locationiq.com/v1/nearby"
 NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+PHOTON_URL = "https://photon.komoot.io/api/"
+OVERPASS_URLS = (
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+)
 LOCATION_HEADERS = {"User-Agent": "HeartRiskPredictor/1.0", "Accept": "application/json"}
 
 FEATURE_NAMES = [
@@ -582,12 +587,28 @@ def geocode_area(area):
     providers = []
     if LOCATIONIQ_API_KEY:
         providers.append((LOCATIONIQ_SEARCH_URL, {"key": LOCATIONIQ_API_KEY, "q": area, "format": "json", "limit": 1}))
-    providers.append((NOMINATIM_SEARCH_URL, {"q": area, "format": "json", "limit": 1}))
+    providers.extend((
+        (PHOTON_URL, {"q": area, "limit": 1}),
+        (NOMINATIM_SEARCH_URL, {"q": area, "format": "json", "limit": 1}),
+    ))
     for endpoint, parameters in providers:
         try:
             matches = fetch_json(endpoint, parameters)
         except (HTTPError, URLError, TimeoutError, ValueError):
             continue
+        if endpoint == PHOTON_URL:
+            features = matches.get("features", []) if isinstance(matches, dict) else []
+            if not features:
+                continue
+            feature = features[0]
+            lon, lat = feature.get("geometry", {}).get("coordinates", (None, None))
+            if lat is None or lon is None:
+                continue
+            props = feature.get("properties", {})
+            display_name = ", ".join(filter(None, [
+                props.get("name"), props.get("city") or props.get("state"), props.get("country"),
+            ])) or area
+            return {"lat": float(lat), "lng": float(lon), "display_name": display_name}
         if matches:
             match = matches[0]
             return {
@@ -638,7 +659,15 @@ def search_overpass(lat, lng, amenity):
   way["amenity"="{amenity}"](around:5000,{lat},{lng});
 );
 out center 12;'''
-    data = fetch_json(OVERPASS_URL, {"data": overpass_query})
+    last_error = None
+    for endpoint in OVERPASS_URLS:
+        try:
+            data = fetch_json(endpoint, {"data": overpass_query})
+            break
+        except (HTTPError, URLError, TimeoutError, ValueError) as exc:
+            last_error = exc
+    else:
+        raise last_error or RuntimeError("All Overpass mirrors failed")
     results = []
     for place in data.get("elements", []):
         tags = place.get("tags", {})
