@@ -88,22 +88,33 @@
   #chat-in:focus{border-color:rgba(226,75,74,.45);background:#fff}
   #chat-send{width:34px;height:34px;border-radius:9px;border:none;background:var(--red);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:opacity .2s;align-self:flex-end}
   #chat-send:hover{opacity:.85}
-  .chat-quick{display:flex;gap:6px;padding:8px 11px 0;background:#F7F6F2}
-  #near-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 10px;border-radius:9px;border:1px solid var(--border);background:#fff;color:var(--red-dk);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;transition:opacity .2s,transform .15s}
-  #near-btn:hover{opacity:.85;transform:translateY(-1px)}
-  #near-btn:disabled{opacity:.5;cursor:default;transform:none}
-  #area-toggle{padding:8px 10px;border-radius:9px;border:1px solid var(--border);background:#fff;color:var(--red-dk);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer}
-  .area-search-row{display:none;gap:6px;padding:8px 11px 0;background:#F7F6F2}
-  .area-search-row.open{display:flex}
-  #area-search{flex:1;min-width:0;border:1px solid var(--border);border-radius:9px;padding:8px 10px;font:inherit;font-size:12px;color:var(--ink);outline:none}
-  #area-search:focus{border-color:rgba(226,75,74,.45)}
-  #area-search-btn{border:0;border-radius:9px;background:var(--red);color:#fff;padding:0 12px;font:600 12px 'DM Sans',sans-serif;cursor:pointer}
-  #area-search-btn:disabled{opacity:.5;cursor:default}
+  .loc-bar{padding:10px 11px 2px;background:#F7F6F2;display:flex;flex-direction:column;gap:8px}
+  .loc-toggle{display:flex;gap:3px;background:rgba(46,45,43,.06);padding:3px;border-radius:11px;position:relative}
+  .loc-toggle-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:8px 8px;border-radius:8px;border:none;background:transparent;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;transition:background .25s,color .25s,box-shadow .25s;white-space:nowrap}
+  .loc-toggle-btn svg{flex-shrink:0;transition:transform .25s}
+  .loc-toggle-btn.active{background:#fff;color:var(--red-dk);box-shadow:0 3px 10px rgba(46,45,43,.1)}
+  .loc-toggle-btn.active svg{transform:scale(1.08)}
+  .loc-toggle-btn:disabled{opacity:.5;cursor:default}
+  .area-search-row{display:none;align-items:center;gap:4px;background:#fff;border:1px solid var(--border);border-radius:11px;padding:3px 4px 3px 12px;transition:box-shadow .2s,border-color .2s}
+  .area-search-row.open{display:flex;animation:growIn .25s cubic-bezier(.34,1.56,.64,1) both}
+  .area-search-row:focus-within{border-color:rgba(226,75,74,.5);box-shadow:0 0 0 3px rgba(226,75,74,.1)}
+  .area-search-ico{flex-shrink:0;opacity:.35}
+  #area-input{flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:12.5px;color:var(--ink);padding:8px 4px}
+  #area-input::placeholder{color:var(--muted);opacity:.85}
+  #area-search-btn{width:30px;height:30px;flex-shrink:0;border-radius:8px;border:none;background:linear-gradient(120deg,var(--red),var(--red-dk));color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity .2s,transform .15s;box-shadow:0 3px 10px rgba(226,75,74,.3)}
+  #area-search-btn:hover{opacity:.92;transform:translateY(-1px) scale(1.04)}
+  #area-search-btn:disabled{opacity:.5;cursor:default;transform:none}
+  .loc-resolved{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--teal);font-weight:600;margin:1px 2px 0;animation:fadeDown .3s ease both}
+  @keyframes growIn{from{opacity:0;transform:scaleY(.7) translateY(-4px)}to{opacity:1;transform:scaleY(1) translateY(0)}}
   .nearby-list{width:100%;max-width:100%}
-  .nearby-card{background:var(--field);border:1px solid var(--border);border-radius:10px;padding:9px 11px;margin-top:7px}
+  .nearby-heading{display:block;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+  .nearby-card{position:relative;background:var(--field);border:1px solid var(--border);border-radius:10px;padding:9px 11px 9px 14px;margin-top:7px;transition:transform .15s,box-shadow .15s,border-color .15s;overflow:hidden}
+  .nearby-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--teal),var(--violet))}
+  .nearby-card:hover{transform:translateX(2px);box-shadow:0 4px 14px rgba(46,45,43,.08);border-color:rgba(46,45,43,.18)}
   .nearby-name{font-size:13px;font-weight:600;color:var(--ink)}
   .nearby-addr{font-size:11.5px;color:var(--muted);margin-top:2px}
   .nearby-meta{font-size:11px;color:var(--teal);margin-top:4px;font-weight:500}
+  .nearby-empty{font-size:12.5px;color:var(--muted);margin-top:4px;line-height:1.5}
   .nearby-link{display:inline-block;margin-top:6px;font-size:11.5px;color:var(--red);font-weight:600;text-decoration:none}
   .nearby-link:hover{text-decoration:underline}
   @keyframes fadeDown{from{opacity:0;transform:translateY(-16px)}to{opacity:1;transform:translateY(0)}}
@@ -246,13 +257,28 @@
       <h3>Heart Health Assistant</h3>
     </div>
   </div>
-  <div class="chat-quick">
-    <button id="near-btn" type="button">&#128205; Find care near me</button>
-    <button id="area-toggle" type="button">Search area</button>
-  </div>
-  <div id="area-search-row" class="area-search-row">
-    <input id="area-search" type="text" placeholder="City, area, or pincode" aria-label="Search area">
-    <button id="area-search-btn" type="button">Search</button>
+  <div class="loc-bar">
+    <div class="loc-toggle">
+      <button id="near-btn" type="button" class="loc-toggle-btn active">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="9.5" r="2.4" stroke="currentColor" stroke-width="2"/></svg>
+        Near me
+      </button>
+      <button id="area-toggle-btn" type="button" class="loc-toggle-btn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Search area
+      </button>
+    </div>
+    <div id="area-search-row" class="area-search-row">
+      <svg class="area-search-ico" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input id="area-input" type="text" placeholder="Neighborhood, city, or pincode…" autocomplete="off">
+      <button id="area-search-btn" type="button" aria-label="Search this area">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <div id="loc-resolved" class="loc-resolved" style="display:none">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span id="loc-resolved-text"></span>
+    </div>
   </div>
   <div id="chat-msgs">
     <div class="msg bot">Hi! I can answer questions about heart health, risk factors, medications, and your results. Tap "Find care near me" to locate nearby doctors and healthcare centers, or ask me anything.</div>
@@ -311,48 +337,75 @@
     msgs.scrollTop = msgs.scrollHeight;
   }
 
-  function buildNearbyMeta(place) {
+  function buildMeta(p) {
     var meta = [];
-    if (place.rating) meta.push('\u2605 ' + place.rating + (place.user_ratings_total ? ' (' + place.user_ratings_total + ')' : ''));
-    if (place.open_now === true) meta.push('Open now');
-    else if (place.open_now === false) meta.push('Closed now');
-    else if (place.opening_hours) meta.push(place.opening_hours);
-    if (place.phone) meta.push(place.phone);
+    if (p.rating) meta.push('\u2605 ' + p.rating + (p.user_ratings_total ? ' (' + p.user_ratings_total + ')' : ''));
+    if (p.open_now === true) meta.push('Open now');
+    else if (p.open_now === false) meta.push('Closed now');
+    else if (p.opening_hours) meta.push(p.opening_hours);
+    if (p.phone) meta.push(p.phone);
     return meta;
   }
 
+  function showResolvedLocation(name) {
+    var box = document.getElementById('loc-resolved');
+    var txt = document.getElementById('loc-resolved-text');
+    if (!name) { box.style.display = 'none'; return; }
+    txt.textContent = 'Showing results near ' + name;
+    box.style.display = 'flex';
+  }
+
   function renderNearbyResults(msgs, data) {
+    if (data.resolved_location) showResolvedLocation(data.resolved_location);
     if (data.error) { appendBotMsg(msgs, data.error); return; }
+
     var results = data.results || [];
-    if (!results.length) {
-      appendBotMsg(msgs, "I couldn't find any healthcare centers nearby. Try again in a different area.");
-      return;
-    }
     var wrap = document.createElement('div');
     wrap.className = 'msg bot nearby-list';
-    var html = '<strong style="display:block;">Nearby care options:</strong>';
+
+    var heading = document.createElement('strong');
+    heading.className = 'nearby-heading';
+    heading.textContent = data.resolved_location ? ('Care near ' + data.resolved_location) : 'Nearby care options';
+    wrap.appendChild(heading);
+
+    if (!results.length) {
+      var empty = document.createElement('div');
+      empty.className = 'nearby-empty';
+      empty.textContent = "Couldn't find any healthcare centers there. Try a nearby city or a broader area name.";
+      wrap.appendChild(empty);
+      msgs.appendChild(wrap);
+      msgs.scrollTop = msgs.scrollHeight;
+      return;
+    }
+
     results.forEach(function (p) {
-      var meta = buildNearbyMeta(p);
-      html += '<div class="nearby-card">' +
-        '<div class="nearby-name"></div>' +
-        (p.address ? '<div class="nearby-addr"></div>' : '') +
-        (meta.length ? '<div class="nearby-meta"></div>' : '') +
-        '<a class="nearby-link" target="_blank" rel="noopener">Open in Google Maps &rarr;</a>' +
-        '</div>';
-    });
-    wrap.innerHTML = html;
-    var cards = wrap.querySelectorAll('.nearby-card');
-    results.forEach(function (p, i) {
-      var card = cards[i];
-      card.querySelector('.nearby-name').textContent = p.name || 'Unnamed location';
-      var addrEl = card.querySelector('.nearby-addr');
-      if (addrEl) addrEl.textContent = p.address || '';
-      var metaEl = card.querySelector('.nearby-meta');
-      if (metaEl) {
-        metaEl.textContent = buildNearbyMeta(p).join(' \u00b7 ');
+      var card = document.createElement('div');
+      card.className = 'nearby-card';
+      var nameEl = document.createElement('div');
+      nameEl.className = 'nearby-name';
+      nameEl.textContent = p.name || 'Unnamed location';
+      card.appendChild(nameEl);
+      if (p.address) {
+        var addrEl = document.createElement('div');
+        addrEl.className = 'nearby-addr';
+        addrEl.textContent = p.address;
+        card.appendChild(addrEl);
       }
-      var link = card.querySelector('.nearby-link');
+      var meta = buildMeta(p);
+      if (meta.length) {
+        var metaEl = document.createElement('div');
+        metaEl.className = 'nearby-meta';
+        metaEl.textContent = meta.join(' \u00b7 ');
+        card.appendChild(metaEl);
+      }
+      var link = document.createElement('a');
+      link.className = 'nearby-link';
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.textContent = 'Open in Google Maps \u2192';
       link.href = p.maps_url || ('https://www.google.com/maps/search/?api=1&query=' + p.lat + ',' + p.lng);
+      card.appendChild(link);
+      wrap.appendChild(card);
     });
     msgs.appendChild(wrap);
     msgs.scrollTop = msgs.scrollHeight;
@@ -361,8 +414,9 @@
   function findNearbyCare(queryHint) {
     var msgs = document.getElementById('chat-msgs');
     document.getElementById('chat-win').classList.add('open');
+    showResolvedLocation(null);
     if (!navigator.geolocation) {
-      appendBotMsg(msgs, 'Location is not available in this browser. Use “Search area” instead.');
+      appendBotMsg(msgs, "Location isn't available in this browser. Try \u201cSearch area\u201d instead and type in a city or neighborhood.");
       return;
     }
     var t = document.createElement('div');
@@ -396,54 +450,64 @@
         });
     }, function () {
       document.getElementById('typing')?.remove();
-      appendBotMsg(msgs, 'Location permission was denied. Use “Search area” instead.');
+      appendBotMsg(msgs, 'Location permission was denied. Try \u201cSearch area\u201d instead and type in a city or neighborhood.');
       if (nearBtn) nearBtn.disabled = false;
     }, { timeout: 10000 });
   }
 
-  document.getElementById('near-btn').onclick = function () { findNearbyCare(''); };
-  document.getElementById('area-toggle').onclick = function () {
-    document.getElementById('area-search-row').classList.toggle('open');
-    document.getElementById('area-search').focus();
-  };
-
   function searchByArea() {
-    var area = document.getElementById('area-search').value.trim();
+    var areaInput = document.getElementById('area-input');
+    var area = areaInput.value.trim();
+    if (!area) { areaInput.focus(); return; }
     var msgs = document.getElementById('chat-msgs');
-    if (!area) {
-      appendBotMsg(msgs, 'Enter an area, city, or pincode to search.');
-      return;
-    }
     document.getElementById('chat-win').classList.add('open');
-    var typing = document.createElement('div');
-    typing.className = 'msg typing'; typing.id = 'typing'; typing.textContent = 'Searching ' + area + '…';
-    msgs.appendChild(typing);
-    var searchButton = document.getElementById('area-search-btn');
-    searchButton.disabled = true;
+    showResolvedLocation(null);
+    var t = document.createElement('div');
+    t.className = 'msg typing'; t.id = 'typing'; t.textContent = 'Searching ' + area + '…';
+    msgs.appendChild(t);
+    msgs.scrollTop = msgs.scrollHeight;
+    var searchBtn = document.getElementById('area-search-btn');
+    if (searchBtn) searchBtn.disabled = true;
     fetch('/nearby_care_by_area', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({area: area})
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ area: area })
     })
-    .then(r => r.json())
-    .then(data => {
-      document.getElementById('typing')?.remove();
-      renderNearbyResults(msgs, data);
-      searchButton.disabled = false;
-    })
-    .catch(() => {
-      document.getElementById('typing')?.remove();
-      appendBotMsg(msgs, 'Could not search that area right now. Please try again.');
-      searchButton.disabled = false;
-    });
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('typing')?.remove();
+        renderNearbyResults(msgs, data);
+        if (searchBtn) searchBtn.disabled = false;
+      })
+      .catch(() => {
+        document.getElementById('typing')?.remove();
+        appendBotMsg(msgs, 'Could not search that area right now. Please try again.');
+        if (searchBtn) searchBtn.disabled = false;
+      });
   }
 
+  var nearBtn = document.getElementById('near-btn');
+  var areaToggleBtn = document.getElementById('area-toggle-btn');
+  var areaRow = document.getElementById('area-search-row');
+  var areaInputEl = document.getElementById('area-input');
+
+  nearBtn.onclick = function () {
+    nearBtn.classList.add('active');
+    areaToggleBtn.classList.remove('active');
+    areaRow.classList.remove('open');
+    findNearbyCare('');
+  };
+  areaToggleBtn.onclick = function () {
+    areaToggleBtn.classList.add('active');
+    nearBtn.classList.remove('active');
+    var wasOpen = areaRow.classList.contains('open');
+    areaRow.classList.add('open');
+    document.getElementById('chat-win').classList.add('open');
+    if (!wasOpen) setTimeout(function () { areaInputEl.focus(); }, 200);
+  };
   document.getElementById('area-search-btn').onclick = searchByArea;
-  document.getElementById('area-search').addEventListener('keydown', function (event) {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      searchByArea();
-    }
+  areaInputEl.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); searchByArea(); }
   });
 
   function sendMsg() {
