@@ -1,10 +1,11 @@
 import os
 import pickle
 import re
+import json
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 import numpy as np
 import pandas as pd
@@ -38,6 +39,12 @@ SEMANTIC_MODEL_NAME = os.environ.get("SEMANTIC_MODEL_NAME", "all-MiniLM-L6-v2")
 GROQ_API_KEY        = os.environ.get("GROQ_API_KEY", "").strip()
 GROQ_MODEL_NAME     = os.environ.get("GROQ_MODEL_NAME", "llama-3.3-70b-versatile")
 MODEL_AUC           = os.environ.get("MODEL_AUC", "").strip() or None
+LOCATIONIQ_API_KEY  = os.environ.get("LOCATIONIQ_API_KEY", "").strip()
+LOCATIONIQ_SEARCH_URL = "https://us1.locationiq.com/v1/search"
+LOCATIONIQ_NEARBY_URL = "https://us1.locationiq.com/v1/nearby"
+NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
+OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+LOCATION_HEADERS = {"User-Agent": "HeartRiskPredictor/1.0", "Accept": "application/json"}
 
 FEATURE_NAMES = [
     "age", "sex", "cp", "trestbps", "chol", "fbs", "restecg",
@@ -554,59 +561,95 @@ def chat():
         return jsonify(reply="Something went wrong — please try again.")
 
 
-@app.route("/nearby_care", methods=["POST"])
-def nearby_care():
-    payload = request.get_json(silent=True) or {}
-    try:
-        lat = float(payload.get("lat"))
-        lng = float(payload.get("lng"))
-    except (TypeError, ValueError):
-        return jsonify(error="A valid location is required to find nearby care."), 400
+def fetch_json(endpoint, parameters):
+    request_url = endpoint + "?" + urlencode(parameters)
+    with urlopen(Request(request_url, headers=LOCATION_HEADERS), timeout=10) as response:
+        return json.load(response)
 
-    if not (-90 <= lat <= 90 and -180 <= lng <= 180):
-        return jsonify(error="The supplied location is outside the valid range."), 400
-    query_hint = str(payload.get("query", "")).lower()
+
+def resolve_amenity(query_hint):
+    query_hint = str(query_hint or "").lower()
     if any(word in query_hint for word in ("hospital", "emergency", "urgent care")):
-        amenity = "hospital"
-    elif any(word in query_hint for word in ("pharmacy", "chemist", "medicine", "drug store")):
-        amenity = "pharmacy"
-    elif "clinic" in query_hint:
-        amenity = "clinic"
-    else:
-        amenity = "doctors"
+        return "hospital"
+    if any(word in query_hint for word in ("pharmacy", "chemist", "medicine", "drug store")):
+        return "pharmacy"
+    if "clinic" in query_hint:
+        return "clinic"
+    return "doctors"
 
+
+def geocode_area(area):
+    providers = []
+    if LOCATIONIQ_API_KEY:
+        providers.append((LOCATIONIQ_SEARCH_URL, {"key": LOCATIONIQ_API_KEY, "q": area, "format": "json", "limit": 1}))
+    providers.append((NOMINATIM_SEARCH_URL, {"q": area, "format": "json", "limit": 1}))
+    for endpoint, parameters in providers:
+        try:
+            matches = fetch_json(endpoint, parameters)
+        except (HTTPError, URLError, TimeoutError, ValueError):
+            continue
+        if matches:
+            match = matches[0]
+            return {
+                "lat": float(match["lat"]),
+                "lng": float(match["lon"]),
+                "display_name": ", ".join(match.get("display_name", area).split(",")[:2]),
+            }
+    return None
+
+
+def format_address(tags):
+    return " ".join(filter(None, [
+        tags.get("addr:housenumber"), tags.get("addr:street"),
+        tags.get("addr:city") or tags.get("addr:suburb"),
+    ])) or tags.get("addr:full", "")
+
+
+def search_locationiq(lat, lng, amenity):
+    if not LOCATIONIQ_API_KEY:
+        return None
+    data = fetch_json(LOCATIONIQ_NEARBY_URL, {
+        "key": LOCATIONIQ_API_KEY,
+        "lat": lat,
+        "lon": lng,
+        "tag": f"amenity:{amenity}",
+        "radius": 5000,
+        "format": "json",
+    })
+    if not isinstance(data, list):
+        return []
+    return [{
+        "name": place.get("name") or place.get("display_name", "").split(",")[0],
+        "address": " ".join(filter(None, [
+            place.get("address", {}).get("house_number"),
+            place.get("address", {}).get("road"),
+            place.get("address", {}).get("city") or place.get("address", {}).get("suburb"),
+        ])),
+        "lat": place["lat"],
+        "lng": place["lon"],
+        "maps_url": f"https://www.google.com/maps/search/?api=1&query={place['lat']},{place['lon']}",
+    } for place in data[:8]]
+
+
+def search_overpass(lat, lng, amenity):
     overpass_query = f'''[out:json][timeout:25];
 (
   node["amenity"="{amenity}"](around:5000,{lat},{lng});
   way["amenity"="{amenity}"](around:5000,{lat},{lng});
 );
 out center 12;'''
-    endpoint = "https://overpass-api.de/api/interpreter?" + urlencode({"data": overpass_query})
-
-    try:
-        with urlopen(endpoint, timeout=8) as response:
-            import json
-            data = json.load(response)
-    except (HTTPError, URLError, TimeoutError, ValueError):
-        return jsonify(error="Nearby care search is temporarily unavailable. Please try again."), 502
-
+    data = fetch_json(OVERPASS_URL, {"data": overpass_query})
     results = []
     for place in data.get("elements", []):
         tags = place.get("tags", {})
         name = tags.get("name")
-        if not name:
-            continue
         location = place if place.get("type") == "node" else place.get("center", {})
         place_lat, place_lng = location.get("lat"), location.get("lon")
-        if place_lat is None or place_lng is None:
+        if not name or place_lat is None or place_lng is None:
             continue
-        address = " ".join(filter(None, [
-            tags.get("addr:housenumber"), tags.get("addr:street"),
-            tags.get("addr:city") or tags.get("addr:suburb"),
-        ])) or tags.get("addr:full", "")
         results.append({
             "name": name,
-            "address": address,
+            "address": format_address(tags),
             "opening_hours": tags.get("opening_hours"),
             "phone": tags.get("phone") or tags.get("contact:phone"),
             "lat": place_lat,
@@ -615,7 +658,52 @@ out center 12;'''
         })
         if len(results) == 8:
             break
-    return jsonify(results=results)
+    return results
+
+
+def find_nearby_care(lat, lng, query_hint):
+    amenity = resolve_amenity(query_hint)
+    try:
+        results = search_locationiq(lat, lng, amenity)
+        if results is not None:
+            return results
+    except (HTTPError, URLError, TimeoutError, ValueError):
+        pass
+    return search_overpass(lat, lng, amenity)
+
+
+@app.route("/nearby_care", methods=["POST"])
+def nearby_care():
+    payload = request.get_json(silent=True) or {}
+    try:
+        lat = float(payload.get("lat"))
+        lng = float(payload.get("lng"))
+    except (TypeError, ValueError):
+        return jsonify(error="A valid location is required to find nearby care."), 400
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        return jsonify(error="The supplied location is outside the valid range."), 400
+    try:
+        return jsonify(results=find_nearby_care(lat, lng, payload.get("query", "")))
+    except (HTTPError, URLError, TimeoutError, ValueError):
+        return jsonify(error="Nearby care search is temporarily unavailable. Please try again."), 502
+
+
+@app.route("/nearby_care_by_area", methods=["POST"])
+def nearby_care_by_area():
+    payload = request.get_json(silent=True) or {}
+    area = str(payload.get("area", "")).strip()
+    if not area:
+        return jsonify(error="Enter an area, city, or pincode to search."), 400
+    location = geocode_area(area)
+    if location is None:
+        return jsonify(error="Could not find that area. Try a more specific city, neighborhood, or pincode."), 404
+    try:
+        return jsonify(
+            results=find_nearby_care(location["lat"], location["lng"], payload.get("query", "")),
+            resolved_location=location["display_name"],
+        )
+    except (HTTPError, URLError, TimeoutError, ValueError):
+        return jsonify(error="Nearby care search is temporarily unavailable. Please try again."), 502
 
 
 if __name__ == "__main__":

@@ -92,6 +92,13 @@
   #near-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 10px;border-radius:9px;border:1px solid var(--border);background:#fff;color:var(--red-dk);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;transition:opacity .2s,transform .15s}
   #near-btn:hover{opacity:.85;transform:translateY(-1px)}
   #near-btn:disabled{opacity:.5;cursor:default;transform:none}
+  #area-toggle{padding:8px 10px;border-radius:9px;border:1px solid var(--border);background:#fff;color:var(--red-dk);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer}
+  .area-search-row{display:none;gap:6px;padding:8px 11px 0;background:#F7F6F2}
+  .area-search-row.open{display:flex}
+  #area-search{flex:1;min-width:0;border:1px solid var(--border);border-radius:9px;padding:8px 10px;font:inherit;font-size:12px;color:var(--ink);outline:none}
+  #area-search:focus{border-color:rgba(226,75,74,.45)}
+  #area-search-btn{border:0;border-radius:9px;background:var(--red);color:#fff;padding:0 12px;font:600 12px 'DM Sans',sans-serif;cursor:pointer}
+  #area-search-btn:disabled{opacity:.5;cursor:default}
   .nearby-list{width:100%;max-width:100%}
   .nearby-card{background:var(--field);border:1px solid var(--border);border-radius:10px;padding:9px 11px;margin-top:7px}
   .nearby-name{font-size:13px;font-weight:600;color:var(--ink)}
@@ -241,6 +248,11 @@
   </div>
   <div class="chat-quick">
     <button id="near-btn" type="button">&#128205; Find care near me</button>
+    <button id="area-toggle" type="button">Search area</button>
+  </div>
+  <div id="area-search-row" class="area-search-row">
+    <input id="area-search" type="text" placeholder="City, area, or pincode" aria-label="Search area">
+    <button id="area-search-btn" type="button">Search</button>
   </div>
   <div id="chat-msgs">
     <div class="msg bot">Hi! I can answer questions about heart health, risk factors, medications, and your results. Tap "Find care near me" to locate nearby doctors and healthcare centers, or ask me anything.</div>
@@ -329,7 +341,6 @@
         '</div>';
     });
     wrap.innerHTML = html;
-    // fill in text content safely (avoids HTML injection from place names/addresses)
     var cards = wrap.querySelectorAll('.nearby-card');
     results.forEach(function (p, i) {
       var card = cards[i];
@@ -351,7 +362,7 @@
     var msgs = document.getElementById('chat-msgs');
     document.getElementById('chat-win').classList.add('open');
     if (!navigator.geolocation) {
-      appendBotMsg(msgs, "Location isn't available in this browser.");
+      appendBotMsg(msgs, 'Location is not available in this browser. Use “Search area” instead.');
       return;
     }
     var t = document.createElement('div');
@@ -385,12 +396,55 @@
         });
     }, function () {
       document.getElementById('typing')?.remove();
-      appendBotMsg(msgs, 'Location permission was denied. Please allow location access and try again.');
+      appendBotMsg(msgs, 'Location permission was denied. Use “Search area” instead.');
       if (nearBtn) nearBtn.disabled = false;
     }, { timeout: 10000 });
   }
 
   document.getElementById('near-btn').onclick = function () { findNearbyCare(''); };
+  document.getElementById('area-toggle').onclick = function () {
+    document.getElementById('area-search-row').classList.toggle('open');
+    document.getElementById('area-search').focus();
+  };
+
+  function searchByArea() {
+    var area = document.getElementById('area-search').value.trim();
+    var msgs = document.getElementById('chat-msgs');
+    if (!area) {
+      appendBotMsg(msgs, 'Enter an area, city, or pincode to search.');
+      return;
+    }
+    document.getElementById('chat-win').classList.add('open');
+    var typing = document.createElement('div');
+    typing.className = 'msg typing'; typing.id = 'typing'; typing.textContent = 'Searching ' + area + '…';
+    msgs.appendChild(typing);
+    var searchButton = document.getElementById('area-search-btn');
+    searchButton.disabled = true;
+    fetch('/nearby_care_by_area', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({area: area})
+    })
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('typing')?.remove();
+      renderNearbyResults(msgs, data);
+      searchButton.disabled = false;
+    })
+    .catch(() => {
+      document.getElementById('typing')?.remove();
+      appendBotMsg(msgs, 'Could not search that area right now. Please try again.');
+      searchButton.disabled = false;
+    });
+  }
+
+  document.getElementById('area-search-btn').onclick = searchByArea;
+  document.getElementById('area-search').addEventListener('keydown', function (event) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      searchByArea();
+    }
+  });
 
   function sendMsg() {
     var text = inp.value.trim();
